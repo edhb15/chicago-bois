@@ -58,10 +58,12 @@
     c.fillStyle = '#4c8a3c'; rect(E, -O, C.SHORE, O);
     c.fillStyle = '#d8c48f'; rect(E + 24, -O, C.SHORE, O);
     c.fillStyle = '#2b2e35'; rect(E, -7, C.SHORE, 7);
-    // pier
+    // pier and the beach
     c.fillStyle = '#8a6a4a'; rect(C.SHORE, C.PIER.z0, C.PIER.x1, C.PIER.z1); rect(F.x0, F.z0, F.x1, F.z1);
+    const Bch = CB.City.beach;
+    if (Bch) { c.fillStyle = '#e3cf9a'; rect(C.SHORE, Bch.z0, Bch.waterX, Bch.z1); }
     const typeCol = { park: '#3e7d32', bean: '#8c9a7a', fountain: '#3e7d32', parking: '#3c3f46', industrial: '#6b6457', downtown: '#5b5f68', skydeck: '#5b5f68',
-      midtown: '#585c64', bigjohn: '#5b5f68', ballpark: '#3f8f3a', apartments: '#4d5148', shops: '#565159', river: '#8f8b84' };
+      midtown: '#585c64', bigjohn: '#5b5f68', ballpark: '#3f8f3a', apartments: '#4d5148', shops: '#565159', river: '#8f8b84', construction: '#8a7556' };
     for (const b of CB.City.blocks) {
       c.fillStyle = '#8f8b84'; rect(b.x0, b.z0, b.x1, b.z1);
       if (b.type !== 'river') { c.fillStyle = typeCol[b.type] || '#555'; rect(b.ix0, b.iz0, b.ix1, b.iz1); }
@@ -349,5 +351,7 @@
     c.fillText('LAKE MICHIGAN', X(C.SHORE + 20), Y(C.HALF * 0.8));
     c.fillText('THE LOOP', X(-40), Y(84));
     c.fillText('CHICAGO RIVER', X(40), Y(CB.City.rivers[0].z1 + 14));
+    if (CB.City.beach) c.fillText('BEACH', X(C.SHORE + 30), Y((CB.City.beach.z0 + CB.City.beach.z1) / 2));
+    if (CB.City.crane) c.fillText('🏗', X(CB.City.crane.x), Y(CB.City.crane.z));
   };
 })(window.CB);

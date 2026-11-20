@@ -34,6 +34,7 @@
   // the south branch runs south along block column RIVER_I.
   const RIVER_I = 3, RIVER_J = 10, RW = 13;
   const WATER_Y = -4.2, BED = -5.5;
+  const BEACH_Z = [268, 470]; // the beach on the lakefront (north of the river mouth)
   const rcx = CB.road(RIVER_I) + C.P / 2, rcz = CB.road(RIVER_J) + C.P / 2;
   City.rivers = [
     { x0: rcx - RW, x1: C.SHORE + 2, z0: rcz - RW, z1: rcz + RW, axis: 'x' },
@@ -54,6 +55,7 @@
   // 16 x 16 blocks: bi runs west -> east (bi = 15 is on the lake), bj runs south -> north.
   const SPECIAL = {
     '15,8': 'bean', '15,7': 'fountain', '7,7': 'skydeck', '10,12': 'bigjohn', '13,14': 'ballpark',
+    '10,7': 'construction',
     '0,12': 'park', '11,2': 'park', '5,15': 'park', '14,12': 'park', '1,5': 'park', '8,3': 'park', '15,11': 'park', '2,1': 'park', '12,6': 'park',
     '1,8': 'parking', '12,3': 'parking', '8,15': 'parking', '14,5': 'parking', '5,2': 'parking', '13,10': 'parking',
     '0,0': 'industrial', '1,0': 'industrial', '0,1': 'industrial', '1,1': 'industrial', '5,0': 'industrial', '6,0': 'industrial',
@@ -183,6 +185,7 @@
     else if (x >= C.EDGE && x <= C.SHORE && (z < -7 || z > 7) && z > -C.OUT && z < C.OUT) y = YB;
     else if (x <= -C.EDGE || z <= -C.EDGE || z >= C.EDGE) y = YB;
     else if (x > C.SHORE && x <= C.PIER.x1 && ((z >= C.PIER.z0 && z <= C.PIER.z1) || (x >= F.x0 && x <= F.x1 && z >= F.z0 && z <= F.z1))) y = YB;
+    else if (City.onBeach(x, z)) y = City.beachY(x);
     else if (x > C.SHORE) y = -6; // lake
     for (let i = 0; i < City.ramps.length; i++) {
       const rp = City.ramps[i];
@@ -206,7 +209,10 @@
     }
     return null;
   };
-  City.inWater = (x, z) => City.groundY(x, z) < -1;
+  // The beach slopes down into the lake: there you can walk until the water gets deep.
+  City.onBeach = (x, z) => { const B = City.beach; return !!B && x > C.SHORE && x < B.x1 && z > B.z0 && z < B.z1; };
+  City.beachY = (x) => { const B = City.beach; return YB + (B.y1 - YB) * (x - C.SHORE) / (B.x1 - C.SHORE); };
+  City.inWater = (x, z) => { const y = City.groundY(x, z); return City.onBeach(x, z) ? y < WATER_Y + 0.25 : y < -1; };
 
   // ------------------------------------------------------------------ nav grid
   const NAV = City.nav = { x0: -(C.OUT + 6), z0: -(C.OUT + 6), cs: 2, w: 0, h: 0, walk: null, opaque: null };
@@ -220,7 +226,7 @@
         const inCity = x > C.WORLD.x0 && x < C.WORLD.x1 - 0.8 && z > C.WORLD.z0 && z < C.WORLD.z1;
         const F = C.FERRIS;
         const onPier = x >= C.SHORE - 1 && x < C.PIER.x1 - 0.5 && ((z > C.PIER.z0 + 0.5 && z < C.PIER.z1 - 0.5) || (x > F.x0 && x < F.x1 && z > 0 && z < F.z1 - 0.5));
-        NAV.walk[j * NAV.w + i] = (inCity || onPier) && City.groundY(x, z) > -1 ? 1 : 0;
+        NAV.walk[j * NAV.w + i] = (inCity || onPier || City.onBeach(x, z)) && !City.inWater(x, z) ? 1 : 0;
       }
     }
     for (const c of City.colliders) {
@@ -800,7 +806,8 @@
     // railings along the shore, the river mouth and the pier
     rail(C.SHORE - 0.25, -C.OUT, C.SHORE - 0.05, -7);
     rail(C.SHORE - 0.25, 7, C.SHORE - 0.05, rm.z0);
-    rail(C.SHORE - 0.25, rm.z1, C.SHORE - 0.05, C.OUT);
+    rail(C.SHORE - 0.25, rm.z1, C.SHORE - 0.05, BEACH_Z[0]); // open at the beach
+    rail(C.SHORE - 0.25, BEACH_Z[1], C.SHORE - 0.05, C.OUT);
     rail(C.EDGE + 0.6, rm.z0 - 0.25, C.SHORE, rm.z0 - 0.05);
     rail(C.EDGE + 0.6, rm.z1 + 0.05, C.SHORE, rm.z1 + 0.25);
     rail(C.SHORE, PR.z0 - 0.1, PR.x1, PR.z0 + 0.1);
@@ -1117,7 +1124,7 @@
     // curb edge darker strip
     const s = C.SIDE;
     const surf = { park: PAL.grass, bean: PAL.plaza, fountain: PAL.grass, parking: PAL.lot, industrial: hex(0x8a8780),
-      downtown: hex(0xbcb6aa), skydeck: hex(0xbcb6aa), midtown: hex(0xb7b1a5), bigjohn: hex(0xa9a49a), ballpark: hex(0x3f8f3a), apartments: hex(0x6a9a4e), shops: PAL.lot }[b.type];
+      downtown: hex(0xbcb6aa), skydeck: hex(0xbcb6aa), construction: hex(0x8a7556), midtown: hex(0xb7b1a5), bigjohn: hex(0xa9a49a), ballpark: hex(0x3f8f3a), apartments: hex(0x6a9a4e), shops: PAL.lot }[b.type];
     G.flat(b.ix0, b.iz0, b.ix1, b.iz1, YB + 0.004, surf);
     // sidewalk slab joints
     for (let x = b.x0 + 3; x < b.x1; x += 3) {
@@ -1140,8 +1147,10 @@
       { ax: b.x0, az: b.z1, bx: b.x0, bz: b.z0, nx: -1, nz: 0 },
     ];
     const alleyX = b.type === 'apartments' ? (b.x0 + b.x1) / 2 : null;
+    const XR = CB.rng(b.bi * 7919 + b.bj * 104729 + 17); // shelters/docks: own stream
     for (let si = 0; si < 4; si++) {
       const s = sides[si];
+      let midUsed = false;
       const L = 60, ux = (s.bx - s.ax) / L, uz = (s.bz - s.az) / L;
       const at = (t, inset) => ({ x: s.ax + ux * t - s.nx * inset, z: s.az + uz * t - s.nz * inset });
       const wet = (t) => City.inRiver(s.ax + ux * t - s.nx * 1.5, s.az + uz * t - s.nz * 1.5) || City.inRiver(s.ax + ux * t, s.az + uz * t);
@@ -1151,9 +1160,13 @@
         const p = at(t, ins);
         lamp(p.x, p.z, s.nx, s.nz);
       }
+      const busy = b.type === 'downtown' || b.type === 'midtown' || b.type === 'shops';
+      const rs = XR(), rd = XR();
+      if (rs < (busy ? 0.13 : 0.05) && !blocked(27) && !blocked(33) && b.type !== 'construction') { const p = at(30, 0.35); busShelter(p.x, p.z, s.nx, s.nz); midUsed = true; }
+      else if (rd < (busy || b.type === 'park' ? 0.12 : 0.04) && !blocked(26) && !blocked(33) && b.type !== 'construction') { const p = at(25.5, 0.5); bikeDock(p.x, p.z, s.nx, s.nz, 6); midUsed = true; }
       if (b.type === 'apartments' || b.type === 'park' || (b.type === 'shops' && R() < 0.5)) {
         for (let t = 12; t < 52; t += R.range(9, 14)) {
-          if (Math.abs(t - 20) < 3 || Math.abs(t - 40) < 3 || blocked(t)) continue;
+          if (Math.abs(t - 20) < 3 || Math.abs(t - 40) < 3 || blocked(t) || (midUsed && t > 23 && t < 36)) continue;
           const p = at(t, 1.0);
           tree(p.x, p.z, R.range(0.8, 1.1));
         }
@@ -1165,7 +1178,7 @@
       if (R() < 0.5 && !blocked(10.5)) breakable('trash', c2.x, c2.z, 0);
       const c3 = at(52, 0.7);
       if (R() < 0.3 && !blocked(52)) breakable(R() < 0.5 ? 'newsbox' : 'mailbox', c3.x, c3.z, Math.atan2(-s.nx, -s.nz) + Math.PI);
-      if (R() < 0.08 && !blocked(30)) { const c4 = at(30, 0.9); breakable('phone', c4.x, c4.z, Math.atan2(s.nx, s.nz)); }
+      if (R() < 0.08 && !blocked(30) && !midUsed) { const c4 = at(30, 0.9); breakable('phone', c4.x, c4.z, Math.atan2(s.nx, s.nz)); }
     }
   }
 
@@ -1244,6 +1257,7 @@
 
   function genShops(b) {
     const D = 14;
+    const XR = CB.rng(b.bi * 613 + b.bj * 8191 + 3); // billboards: own stream
     const strip = (x0, z0, x1, z1, alongX, face, cornerA, cornerB) => {
       const len = alongX ? x1 - x0 : z1 - z0;
       let t = 0, first = true;
@@ -1261,6 +1275,10 @@
         const tint = R.pick(style === 'brick' ? PAL.brick : style === 'stone' ? PAL.stone : PAL.office);
         const enter = R() < 0.55;
         if (alongX) building(x0 + a0, z0, x0 + a1, z1, h, style, tint, { store, district: 'shops', room: enter });
+        if (alongX && XR() < 0.22 && a1 - a0 > 7) {
+          const nz = face === 's' ? -1 : 1;
+          billboard(x0 + (a0 + a1) / 2, nz < 0 ? z0 + 1.4 : z1 - 1.4, h, 0, nz, Math.min(8.5, a1 - a0 - 1), XR);
+        }
         else building(x0, z0 + a0, x1, z0 + a1, h, style, tint, { store, district: 'shops', room: enter });
         if (R() < 0.4) acUnit(alongX ? x0 + (a0 + a1) / 2 : (x0 + x1) / 2, alongX ? (z0 + z1) / 2 : z0 + (a0 + a1) / 2, h);
         t += w; first = false;
@@ -1379,7 +1397,10 @@
     G.flat(cx - 2, b.iz0, cx + 2, b.iz1, YB + 0.008, PAL.path);
     G.flat(b.ix0, cz - 2, b.ix1, cz + 2, YB + 0.008, PAL.path);
     if (kind === 'bean' || kind === 'fountain') G.flat(cx - 16, cz - 16, cx + 16, cz + 16, YB + 0.01, PAL.plaza);
-    const clear = (x, z) => Math.abs(x - cx) > 3.5 && Math.abs(z - cz) > 3.5 && (kind === 'park' || Math.max(Math.abs(x - cx), Math.abs(z - cz)) > 18);
+    const feat = kind === 'park' ? { court: [cx + 4, cz + 5, cx + 25, cz + 19], play: [cx - 21, cz - 19, cx - 4.5, cz - 5] } : {};
+    const inR = (q, x, z, m) => q && x > q[0] - m && x < q[2] + m && z > q[1] - m && z < q[3] + m;
+    const clear = (x, z) => Math.abs(x - cx) > 3.5 && Math.abs(z - cz) > 3.5 && (kind === 'park' || Math.max(Math.abs(x - cx), Math.abs(z - cz)) > 18) &&
+      !inR(feat.court, x, z, 2.5) && !inR(feat.play, x, z, 2.5);
     let n = 0;
     for (let k = 0; k < 120 && n < 22; k++) {
       const x = R.range(b.ix0 + 2, b.ix1 - 2), z = R.range(b.iz0 + 2, b.iz1 - 2);
@@ -1401,6 +1422,12 @@
       P.sLampPool.add(cx + dx + 2.6, YB + 0.03, cz + dz + 2.6, 9, 1, 9);
     }
     if (kind !== 'bean') hotdogStand(cx + 6, b.iz0 + 2.5);
+    if (feat.court) {
+      court(...feat.court);
+      playground(...feat.play);
+      const kinds = ['coffee', 'icecream', 'bbq', 'tacos'];
+      if ((b.bi + b.bj) % 2 === 0) foodTruck(cx - 16, cz + 4.2, 0, kinds[(b.bi * 3 + b.bj) % 4]);
+    }
     if (kind === 'fountain') {
       const stone = hex(0xd9cdb4);
       P.sCyl.add(cx, YB + 0.4, cz, 22, 0.8, 22, stone);
@@ -1643,6 +1670,9 @@
       }
       if (R() < 0.35) bench(E + 23.5, z + 3, Math.PI / 2);
     }
+    beach();
+    foodTruck(E + 19.5, -250, Math.PI / 2, 'icecream');
+    foodTruck(E + 19.5, 235, Math.PI / 2, 'coffee');
     hotdogStand(E + 15, -40);
     hotdogStand(E + 15, 120);
     hotdogStand(E + 15, -300);
@@ -1665,6 +1695,59 @@
     }
     addCollider(fx - 11, 13, fx + 11, 23, 3, 'ferris');
     P.sBox.add(fx, YB + 1.5, 18, 22, 3, 10, hex(0x34495e));
+  }
+
+  // North Avenue-style beach: sand sloping into the lake between two rock breakwaters,
+  // umbrellas, towels, a lifeguard chair and a volleyball net (people: ambient.js).
+  function beach() {
+    const XR = CB.rng(777), S0 = C.SHORE, BW = 34, z0 = BEACH_Z[0], z1 = BEACH_Z[1];
+    const B = City.beach = { x0: S0, x1: S0 + BW, z0, z1, y1: WATER_Y - 0.6 };
+    const slope = Math.atan2(YB - B.y1, BW), len = Math.hypot(BW, YB - B.y1);
+    const ny = BW / len, nx = (YB - B.y1) / len;
+    const sand = PAL.sand, wet = CB.shade(sand, 0.78);
+    B.waterX = S0 + BW * (YB - WATER_Y) / (YB - B.y1);
+    G.quad([S0, YB + 0.012, z0], [S0 + BW, B.y1, z0], [S0 + BW, B.y1, z1], [S0, YB + 0.012, z1], [nx, ny, 0], sand);
+    const wx0 = B.waterX - 4, wy0 = City.beachY(wx0) + 0.01;
+    G.quad([wx0, wy0, z0], [S0 + BW, B.y1 + 0.01, z0], [S0 + BW, B.y1 + 0.01, z1], [wx0, wy0, z1], [nx, ny, 0], wet);
+    for (const [z, n] of [[z0, -1], [z1, 1]]) G.quad([S0, YB, z], [S0 + BW, B.y1, z], [S0 + BW, BED, z], [S0, BED, z], [0, 0, n], CB.shade(sand, 0.7));
+    // rock breakwaters at both ends
+    for (const z of [z0 - 1.5, z1 + 1.5]) for (let x = S0 + 1; x < S0 + 52; x += XR.range(1.6, 2.4)) {
+      const y = Math.max(WATER_Y + 0.2, x < B.x1 ? City.beachY(x) : WATER_Y);
+      P.sSph.add(x, y + 0.2, z + XR.range(-0.8, 0.8), XR.range(1.8, 2.8), XR.range(1.2, 2), XR.range(1.8, 2.8), CB.shade(hex(0x8d8a82), XR.range(0.75, 1.1)));
+    }
+    // umbrellas and towels
+    const brights = [0xe74c3c, 0xf1c40f, 0x3498db, 0x2ecc71, 0xe67e22, 0x9b59b6, 0xff6fa8, 0x1abc9c].map(hex);
+    City.towels = [];
+    for (let k = 0; k < 26; k++) {
+      const x = XR.range(S0 + 3, B.waterX - 7), z = XR.range(z0 + 6, z1 - 6), y = City.beachY(x);
+      if (k % 2 === 0) {
+        P.sCyl.add(x, y + 1.2, z, 0.06, 2.4, 0.06, hex(0xdddddd));
+        P.sCone.add(x, y + 2.45, z, 2.6, 0.55, 2.6, XR.pick(brights));
+        addCollider(x - 0.1, z - 0.1, x + 0.1, z + 0.1, y + 2.4, 'pole');
+      }
+      const tx = x + 1.3, tz = z + XR.range(-0.6, 0.6), yaw = XR.range(-0.3, 0.3);
+      P.sBox.add(tx, City.beachY(tx) + 0.02, tz, 1.0, 0.02, 1.9, XR.pick(brights), yaw, 0, -slope);
+      City.towels.push({ x: tx, z: tz, y: City.beachY(tx), yaw });
+    }
+    // lifeguard chair
+    const lx = S0 + 14, lz = (z0 + z1) / 2, ly = City.beachY(lx), white = hex(0xf2f2f2);
+    for (const [dx, dz] of [[-0.7, -0.7], [0.7, -0.7], [0.7, 0.7], [-0.7, 0.7]]) P.sBox.add(lx + dx, ly + 1.3, lz + dz, 0.14, 2.6, 0.14, white);
+    P.sBox.add(lx, ly + 2.6, lz, 1.6, 0.12, 1.6, white);
+    P.sBox.add(lx - 0.75, ly + 3.2, lz, 0.1, 1.1, 1.5, white);
+    P.sCone.add(lx, ly + 4.4, lz, 2.4, 0.6, 2.4, hex(0xe74c3c));
+    P.sCyl.add(lx, ly + 3.6, lz, 0.05, 1.6, 0.05, white);
+    P.sCyl.add(lx + 0.8, ly + 1.4, lz + 0.85, 0.7, 0.15, 0.7, hex(0xe74c3c), 0, Math.PI / 2, 0);
+    for (let k = 0; k < 6; k++) P.sBox.add(lx + 0.75, ly + 0.3 + k * 0.38, lz, 0.05, 0.05, 1.3, white);
+    addCollider(lx - 0.8, lz - 0.8, lx + 0.8, lz + 0.8, ly + 4.5, 'chair');
+    B.chair = { x: lx, z: lz, y: ly + 2.7 };
+    // volleyball net across z
+    const vx = S0 + 9, vz = z0 + 40, vy = City.beachY(vx);
+    for (const dz of [-4.6, 4.6]) { P.sCyl.add(vx, vy + 1.3, vz + dz, 0.1, 2.6, 0.1, hex(0xdddddd)); addCollider(vx - 0.1, vz + dz - 0.1, vx + 0.1, vz + dz + 0.1, vy + 2.6, 'pole'); }
+    P.sBox.add(vx, vy + 2.05, vz, 0.03, 0.9, 9.1, hex(0x3a3f44));
+    P.sBox.add(vx, vy + 2.5, vz, 0.05, 0.07, 9.1, white);
+    B.net = { x: vx, z: vz, y: vy };
+    // signs at the top of the beach
+    for (const z of [z0 + 4, z1 - 4]) { P.sCyl.add(S0 - 1, YB + 1.2, z, 0.08, 2.4, 0.08, hex(0x7f8c8d)); P.sBox.add(S0 - 1, YB + 2.35, z, 0.08, 0.6, 1.6, hex(0x2e6da4)); }
   }
 
   // A little brick-and-ivy ballpark: diamond, stands behind home plate, light towers and a scoreboard.
@@ -1737,11 +1820,259 @@
   }
 
   // ------------------------------------------------------------------ build
+  // ================================================================== extra places
+  // (each uses its own random stream so the rest of the city layout stays the same)
+
+  // A tower going up: concrete core, floor slabs on columns, glass on the lower floors, a site
+  // fence with a gate, machines and a tower crane (its top turns - see ambient.js).
+  function genConstruction(b) {
+    const XR = CB.rng(4242);
+    const X0 = b.ix0, X1 = b.ix1, Z0 = b.iz0, Z1 = b.iz1, cx = (X0 + X1) / 2;
+    const dirt = hex(0x8a7556), plywood = hex(0xc9a56a), conc = hex(0xa9a59c), yellow = hex(0xf2c230), dark = hex(0x2d3436);
+    G.flat(X0, Z0, X1, Z1, YB + 0.006, dirt);
+    for (let k = 0; k < 10; k++) { const x = XR.range(X0 + 2, X1 - 8), z = XR.range(Z0 + 2, Z1 - 3); G.flat(x, z, x + XR.range(3, 8), z + XR.range(0.4, 0.9), YB + 0.008, CB.shade(dirt, 0.82)); }
+    // fence (gate on the south side)
+    const fh = 2.5;
+    const fence = (x0, z0, x1, z1) => {
+      P.sBox.add((x0 + x1) / 2, YB + fh / 2, (z0 + z1) / 2, Math.max(0.08, Math.abs(x1 - x0)), fh, Math.max(0.08, Math.abs(z1 - z0)), plywood);
+      addCollider(Math.min(x0, x1) - 0.06, Math.min(z0, z1) - 0.06, Math.max(x0, x1) + 0.06, Math.max(z0, z1) + 0.06, YB + fh, 'fence');
+    };
+    fence(X0, Z0, cx - 4, Z0); fence(cx + 4, Z0, X1, Z0); fence(X0, Z1, X1, Z1); fence(X0, Z0, X0, Z1); fence(X1, Z0, X1, Z1);
+    for (const gx of [cx - 4, cx + 4]) { P.sBox.add(gx, YB + 1.4, Z0, 0.3, 2.8, 0.3, yellow); P.sBox.add(gx, YB + 2.95, Z0, 0.32, 0.3, 0.32, dark); }
+    City.graffiti.push({ x: X0 + 8, z: Z0 - 1.3, wx: X0 + 8, wz: Z0 - 0.06, nx: 0, nz: -1, y: YB + 1.3 });
+    // the tower: 16 floors, glass on the first 6, bare slabs and columns above
+    const bx0 = X0 + 5, bx1 = X0 + 31, bz0 = Z0 + 15, bz1 = Z1 - 5;
+    const FH = 3.5, NF = 16, top = YB + NF * FH, clad = 6;
+    const ch = chunkAt((bx0 + bx1) / 2, (bz0 + bz1) / 2);
+    wallsUV(ch.glass, bx0, bz0, bx1, bz1, YB, YB + clad * FH, YB, hex(0xb8c8d8), 0, 0);
+    for (let f = clad; f <= NF; f++) {
+      const y = YB + f * FH;
+      ch.plain.box(bx0 - 0.4, y - 0.35, bz0 - 0.4, bx1 + 0.4, y, bz1 + 0.4, conc, {});
+      if (f === NF) break;
+      const ns = 5;
+      for (let k = 0; k <= ns; k++) {
+        const x = bx0 + (bx1 - bx0) * k / ns, z = bz0 + (bz1 - bz0) * k / ns;
+        for (const zz of [bz0, bz1]) ch.plain.box(x - 0.25, y, zz - 0.25, x + 0.25, y + FH - 0.35, zz + 0.25, conc, { bottom: true, top: true });
+        if (k > 0 && k < ns) for (const xx of [bx0, bx1]) ch.plain.box(xx - 0.25, y, z - 0.25, xx + 0.25, y + FH - 0.35, z + 0.25, conc, { bottom: true, top: true });
+      }
+    }
+    // core (lift shaft) sticking out of the top, rebar on the top floor
+    const kx = (bx0 + bx1) / 2, kz = (bz0 + bz1) / 2;
+    ch.plain.box(kx - 3, YB + clad * FH, kz - 3.5, kx + 3, top + 3.5, kz + 3.5, CB.shade(conc, 0.85), { bottom: true });
+    for (let k = 0; k < 40; k++) { const x = XR.range(bx0, bx1), z = XR.pick([bz0, bz1]); P.sBox.add(x, top + 0.6, z + XR.range(-0.2, 0.2), 0.04, 1.2, 0.04, hex(0x7a4a2a)); }
+    addCollider(bx0 - 0.4, bz0 - 0.4, bx1 + 0.4, bz1 + 0.4, top + 3.5, 'building');
+    City.buildingSite = { x0: bx0, z0: bz0, x1: bx1, z1: bz1, top };
+    // tower crane mast (lattice) next to the building
+    const mx = X1 - 8, mz = (bz0 + bz1) / 2, MH = top + 15, mw = 2.0, seg = 3;
+    P.sBox.add(mx, YB + 0.5, mz, 5, 1, 5, conc);
+    for (const [dx, dz] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) P.sBox.add(mx + dx * mw / 2, (YB + MH) / 2, mz + dz * mw / 2, 0.22, MH - YB, 0.22, yellow);
+    const da = Math.atan2(seg, mw), dl = Math.hypot(seg, mw);
+    for (let y = YB + 1, n = 0; y < MH - seg; y += seg, n++) {
+      const yc = y + seg / 2, k = n % 2 ? 1 : -1;
+      for (const sd of [-1, 1]) {
+        P.sBox.add(mx, yc, mz + sd * mw / 2, dl, 0.1, 0.1, yellow, 0, 0, k * da);
+        P.sBox.add(mx + sd * mw / 2, yc, mz, 0.1, 0.1, dl, yellow, 0, k * da, 0);
+        P.sBox.add(mx, y, mz + sd * mw / 2, mw, 0.1, 0.1, yellow);
+        P.sBox.add(mx + sd * mw / 2, y, mz, 0.1, 0.1, mw, yellow);
+      }
+    }
+    addCollider(mx - 2.5, mz - 2.5, mx + 2.5, mz + 2.5, MH, 'crane');
+    City.crane = { x: mx, z: mz, y: MH, reach: 52 };
+    // site office (stacked containers), portable toilets, a dumpster to hide in
+    for (const [y, c] of [[0, hex(0xf2f2f2)], [2.6, hex(0x2e6da4)]]) {
+      P.sBox.add(X0 + 6.5, YB + y + 1.3, Z0 + 3, 9, 2.6, 2.6, c);
+      for (let k = 0; k < 3; k++) P.sBox.add(X0 + 3.5 + k * 3, YB + y + 1.5, Z0 + 4.31, 1.2, 0.9, 0.04, hex(0x2b3a4a));
+    }
+    addCollider(X0 + 2, Z0 + 1.7, X0 + 11, Z0 + 4.3, YB + 5.2, 'office');
+    for (let k = 0; k < 3; k++) {
+      const x = X1 - 3 - k * 1.5;
+      P.sBox.add(x, YB + 1.15, Z0 + 2, 1.3, 2.3, 1.3, hex(0x1f6fb5)); P.sBox.add(x, YB + 2.35, Z0 + 2, 1.4, 0.12, 1.4, hex(0xf2f2f2));
+    }
+    addCollider(X1 - 6.8, Z0 + 1.3, X1 - 2.3, Z0 + 2.7, YB + 2.4, 'toilets');
+    dumpster(X0 + 14, Z0 + 3, false);
+    // materials: pipes, steel beams, a sand pile
+    for (let r = 0; r < 3; r++) for (let k = 0; k < 4 - r; k++) P.sCyl.add(X0 + 34 + k * 0.62 + r * 0.31, YB + 0.31 + r * 0.54, Z0 + 9, 0.6, 7, 0.6, hex(0x6f7a84), 0, Math.PI / 2, 0);
+    addCollider(X0 + 33.5, Z0 + 5.5, X0 + 36.5, Z0 + 12.5, YB + 1.6, 'pipes');
+    for (let k = 0; k < 5; k++) P.sBox.add(X1 - 14, YB + 0.18 + k * 0.32, Z1 - 4 - k * 0.05, 9, 0.3, 0.4 + (k % 2) * 0.2, hex(0x8b3a2a));
+    addCollider(X1 - 18.5, Z1 - 4.4, X1 - 9.5, Z1 - 3.6, YB + 1.8, 'beams');
+    P.sSph.add(X0 + 40, YB + 0.8, Z1 - 12, 7, 3.2, 6, hex(0xb59a6a)); addCollider(X0 + 37.5, Z1 - 14.5, X0 + 42.5, Z1 - 9.5, YB + 2.5, 'pile');
+    // excavator (tracks, body, cab, boom, arm, bucket)
+    const ex = X0 + 40, ez = Z0 + 20;
+    for (const dz of [-1.1, 1.1]) P.sBox.add(ex, YB + 0.45, ez + dz, 4.2, 0.9, 0.7, hex(0x2b2b2b));
+    P.sBox.add(ex - 0.3, YB + 1.45, ez, 3.4, 1.1, 2.6, yellow);
+    P.sBox.add(ex + 0.6, YB + 2.5, ez - 0.55, 1.3, 1.3, 1.2, yellow);
+    P.sBox.add(ex + 1.26, YB + 2.6, ez - 0.55, 0.02, 0.9, 1.0, hex(0x26323d));
+    P.sBox.add(ex + 2.6, YB + 3.2, ez + 0.5, 3.6, 0.45, 0.45, yellow, 0, 0, 0.55);
+    P.sBox.add(ex + 4.5, YB + 2.3, ez + 0.5, 0.4, 2.8, 0.4, yellow, 0, 0, -0.35);
+    P.sBox.add(ex + 5.0, YB + 0.7, ez + 0.5, 1.0, 0.8, 1.2, hex(0x3a3a3a));
+    addCollider(ex - 2.2, ez - 1.6, ex + 5.6, ez + 1.6, YB + 3, 'machine');
+    // cement mixer truck
+    const tx = X0 + 21, tz = Z0 + 9;
+    P.sBox.add(tx - 3.2, YB + 1.4, tz, 2.0, 2.0, 2.4, hex(0xd8d8d8));
+    P.sBox.add(tx - 2.2, YB + 1.9, tz, 0.02, 0.8, 2.0, hex(0x26323d));
+    P.sBox.add(tx + 0.5, YB + 0.8, tz, 6.5, 0.6, 2.2, hex(0x333333));
+    P.sCyl.add(tx + 0.8, YB + 2.3, tz, 2.3, 4.6, 2.3, hex(0xe67e22), 0, 0, Math.PI / 2 - 0.25);
+    for (const wx of [-3, 1.2, 2.8]) for (const wz of [-1.05, 1.05]) P.sCyl.add(tx + wx, YB + 0.5, tz + wz, 1.0, 0.35, 1.0, hex(0x1b1b1b), 0, Math.PI / 2, 0);
+    addCollider(tx - 4.3, tz - 1.2, tx + 3.8, tz + 1.2, YB + 3.4, 'truck');
+    // cones, barriers and floodlights
+    for (let k = 0; k < 8; k++) P.sCone.add(cx - 7 + k * 2, YB + 0.38, Z0 - 1.2, 0.45, 0.75, 0.45, k % 2 ? hex(0xff6b1a) : hex(0xf4f4f4));
+    for (const [x, z] of [[X0 + 1.5, Z1 - 1.5], [X1 - 1.5, Z0 + 12], [X0 + 1.5, Z0 + 14]]) {
+      P.sCyl.add(x, YB + 4, z, 0.15, 8, 0.15, dark);
+      P.sLamp.add(x, YB + 8.1, z, 1.2, 0.45, 0.4);
+      P.sLampPool.add(x + (x < cx ? 6 : -6), YB + 0.03, z, 18, 1, 18);
+      addCollider(x - 0.15, z - 0.15, x + 0.15, z + 0.15, 8, 'pole');
+    }
+    foodTruck(cx + 12, Z0 - 2.0, 0, 'tacos', XR);
+  }
+
+  // Food truck parked with its serving hatch open.
+  function foodTruck(x, z, yaw, kind, XR) {
+    const col = { tacos: hex(0xe74c3c), coffee: hex(0x2e6da4), icecream: hex(0xf5b7d2), bbq: hex(0x27251f) }[kind] || hex(0xf1c40f);
+    const along = Math.abs(Math.sin(yaw)) < 0.5; // length along x
+    const L = 5.8, W = 2.3, sx = along ? L : W, sz = along ? W : L;
+    const fx = along ? 1 : 0, fz = along ? 0 : 1; // length direction
+    const nx = along ? 0 : 1, nz = along ? 1 : 0;  // serving side
+    P.sBox.add(x, YB + 1.75, z, sx, 2.5, sz, col);
+    P.sBox.add(x + fx * (L / 2 + 0.8), YB + 1.35, z + fz * (L / 2 + 0.8), along ? 1.6 : W - 0.1, 1.7, along ? W - 0.1 : 1.6, hex(0xf2f2f2));
+    P.sBox.add(x + fx * (L / 2 + 1.61), YB + 1.7, z + fz * (L / 2 + 1.61), along ? 0.02 : 1.8, 0.7, along ? 1.8 : 0.02, hex(0x26323d));
+    P.sLamp.add(x - fx * 0.6 + nx * (W / 2 + 0.01), YB + 2.0, z - fz * 0.6 + nz * (W / 2 + 0.01), along ? 2.6 : 0.03, 0.9, along ? 0.03 : 2.6);
+    P.sBox.add(x - fx * 0.6 + nx * (W / 2 + 0.45), YB + 2.75, z - fz * 0.6 + nz * (W / 2 + 0.45), along ? 3.0 : 0.9, 0.06, along ? 0.9 : 3.0, hex(0xf2f2f2));
+    P.sBox.add(x - fx * 0.6 + nx * (W / 2 + 0.25), YB + 1.2, z - fz * 0.6 + nz * (W / 2 + 0.25), along ? 2.6 : 0.4, 0.06, along ? 0.4 : 2.6, hex(0xb0b0b0));
+    for (const a of [-L / 2 + 1, L / 2 - 0.4, L / 2 + 1.1]) for (const sd of [-1, 1]) {
+      P.sCyl.add(x + fx * a + nx * sd * (W / 2 - 0.1), YB + 0.42, z + fz * a + nz * sd * (W / 2 - 0.1), 0.84, 0.3, 0.84, hex(0x1b1b1b), 0, along ? Math.PI / 2 : 0, along ? 0 : Math.PI / 2);
+    }
+    const hx = (L / 2 + 1.7) * fx, hz = (L / 2 + 1.7) * fz;
+    addCollider(Math.min(x - sx / 2, x + hx) - 0.1, Math.min(z - sz / 2, z + hz) - 0.1, Math.max(x + sx / 2, x + hx) + 0.1, Math.max(z + sz / 2, z + hz) + 0.1, YB + 3, 'truck');
+    void XR;
+  }
+
+  // Basketball court with hoops and a chain-link fence (players: ambient.js).
+  function court(x0, z0, x1, z1) {
+    const W = x1 - x0, D = z1 - z0, white = hex(0xf2f2f2);
+    G.flat(x0, z0, x1, z1, YB + 0.012, hex(0x3b7d57));
+    G.flat(x0 + 1, z0 + 1, x1 - 1, z1 - 1, YB + 0.014, hex(0x2e6da4));
+    const line = (a, b2, c, d) => G.flat(a, b2, c, d, YB + 0.016, white);
+    line(x0 + 1, z0 + 1, x1 - 1, z0 + 1.08); line(x0 + 1, z1 - 1.08, x1 - 1, z1 - 1); line(x0 + 1, z0 + 1, x0 + 1.08, z1 - 1); line(x1 - 1.08, z0 + 1, x1 - 1, z1 - 1);
+    line((x0 + x1) / 2 - 0.04, z0 + 1, (x0 + x1) / 2 + 0.04, z1 - 1);
+    const cz = (z0 + z1) / 2;
+    for (const sd of [-1, 1]) {
+      const bx = sd < 0 ? x0 + 1 : x1 - 1;
+      // key and free-throw line
+      G.flat(Math.min(bx, bx - sd * 5.6), cz - 2.4, Math.max(bx, bx - sd * 5.6), cz + 2.4, YB + 0.015, hex(0xc0392b));
+      line(Math.min(bx - sd * 5.6, bx - sd * 5.5), cz - 2.4, Math.max(bx - sd * 5.6, bx - sd * 5.5), cz + 2.4);
+      // hoop: post, arm, backboard, rim, net
+      const px = bx + sd * 0.6, hx = bx - sd * 1.2;
+      P.sCyl.add(px, YB + 1.7, cz, 0.16, 3.4, 0.16, hex(0x2d3436));
+      P.sBox.add((px + bx - sd * 0.9) / 2, YB + 3.3, cz, Math.abs(px - (bx - sd * 0.9)), 0.12, 0.12, hex(0x2d3436));
+      P.sBox.add(bx - sd * 0.9, YB + 3.4, cz, 0.06, 1.05, 1.8, white);
+      P.sBox.add(bx - sd * 0.93, YB + 3.25, cz, 0.02, 0.45, 0.6, hex(0xc0392b));
+      for (const [ox, oz, w, d] of [[0, 0.23, 0.48, 0.04], [0, -0.23, 0.48, 0.04], [0.23, 0, 0.04, 0.48], [-0.23, 0, 0.04, 0.48]]) P.sBox.add(hx + ox, YB + 3.05, cz + oz, w, 0.04, d, hex(0xff6b1a));
+      P.sCyl.add(hx, YB + 2.83, cz, 0.38, 0.4, 0.38, hex(0xe6e6e6));
+      addCollider(px - 0.15, cz - 0.15, px + 0.15, cz + 0.15, YB + 3.4, 'pole');
+      City.hoops.push({ x: hx, z: cz, y: YB + 3.05 });
+    }
+    // fence on the long sides: posts and rails (a solid panel would hide the game)
+    for (const z of [z0, z1]) {
+      for (const y of [0.15, 1.6, 3.15]) P.sBox.add((x0 + x1) / 2, YB + y, z, W, 0.06, 0.06, hex(0x6b7277));
+      for (let x = x0; x <= x1 + 0.01; x += W / 8) P.sCyl.add(x, YB + 1.6, z, 0.07, 3.2, 0.07, hex(0x5d6266));
+      for (let x = x0 + W / 16; x < x1; x += W / 8) P.sBox.add(x, YB + 1.6, z, W / 8 * 1.12, 0.03, 0.03, hex(0x9aa0a6), 0, 0, 0.35);
+      addCollider(x0, z - 0.06, x1, z + 0.06, YB + 3.2, 'fence');
+    }
+    City.courts.push({ x0, z0, x1, z1, cx: (x0 + x1) / 2, cz });
+  }
+
+  // Playground: slide tower, swings, see-saw and a sandpit on soft red flooring.
+  function playground(x0, z0, x1, z1) {
+    G.flat(x0, z0, x1, z1, YB + 0.012, hex(0xa8452f));
+    const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, red = hex(0xd63031), blue = hex(0x0984e3), yel = hex(0xfdcb6e), wood = hex(0x8a5a35);
+    // slide tower
+    const tx = x0 + 4, tz = z0 + 4;
+    for (const [dx, dz] of [[-0.9, -0.9], [0.9, -0.9], [0.9, 0.9], [-0.9, 0.9]]) P.sBox.add(tx + dx, YB + 1.4, tz + dz, 0.15, 2.8, 0.15, blue);
+    P.sBox.add(tx, YB + 1.6, tz, 2.0, 0.12, 2.0, wood);
+    P.sCone.add(tx, YB + 3.2, tz, 2.8, 0.9, 2.8, red);
+    P.sBox.add(tx + 2.4, YB + 0.85, tz, 3.4, 0.08, 0.7, yel, 0, 0, -0.45);
+    for (const s of [-0.38, 0.38]) P.sBox.add(tx + 2.4, YB + 1.0, tz + s, 3.4, 0.25, 0.05, yel, 0, 0, -0.45);
+    for (let k = 0; k < 5; k++) P.sBox.add(tx - 1.15, YB + 0.3 + k * 0.3, tz, 0.05, 0.05, 0.7, blue);
+    addCollider(tx - 1, tz - 1, tx + 4, tz + 1, YB + 3, 'play');
+    // swings (A-frame)
+    const sx = x1 - 5, sz = z0 + 4;
+    for (const dx of [-2.2, 2.2]) for (const dz of [-0.8, 0.8]) P.sBox.add(sx + dx, YB + 1.25, sz + dz * 0.5, 0.12, 2.6, 0.12, red, 0, dz * 0.35, 0);
+    P.sCyl.add(sx, YB + 2.5, sz, 0.14, 4.6, 0.14, red, 0, 0, Math.PI / 2);
+    for (const dx of [-1, 1]) {
+      for (const dz of [-0.2, 0.2]) P.sBox.add(sx + dx, YB + 1.55, sz + dz, 0.02, 1.9, 0.02, hex(0x9aa0a6));
+      P.sBox.add(sx + dx, YB + 0.6, sz, 0.5, 0.05, 0.45, hex(0x2d3436));
+    }
+    addCollider(sx - 2.4, sz - 0.6, sx + 2.4, sz + 0.6, YB + 2.6, 'play');
+    // see-saw and sandpit
+    P.sBox.add(cx, YB + 0.25, z1 - 4, 0.3, 0.5, 0.3, blue);
+    P.sBox.add(cx, YB + 0.5, z1 - 4, 3.6, 0.08, 0.3, yel, 0, 0, 0.18);
+    G.flat(x0 + 2, z1 - 7, x0 + 7, z1 - 2, YB + 0.03, PAL.sand);
+    for (const [a, b2, c, d] of [[x0 + 2, z1 - 7, x0 + 7, z1 - 6.8], [x0 + 2, z1 - 2.2, x0 + 7, z1 - 2], [x0 + 2, z1 - 7, x0 + 2.2, z1 - 2], [x0 + 6.8, z1 - 7, x0 + 7, z1 - 2]]) P.sBox.add((a + c) / 2, YB + 0.12, (b2 + d) / 2, c - a, 0.24, d - b2, wood);
+  }
+
+  // Bus shelter with a lit ad panel and a stop sign (open towards the street).
+  function busShelter(x, z, nx, nz) {
+    const ux = -nz, uz = nx; // along the kerb
+    const at = (u, out, y, su, sy, so, col) => P.sBox.add(x + ux * u + nx * out, y, z + uz * u + nz * out, Math.abs(ux) > 0.5 ? su : so, sy, Math.abs(ux) > 0.5 ? so : su, col);
+    const glass = hex(0x9fb7c9), frame = hex(0x34495e);
+    at(0, -0.55, YB + 2.55, 3.8, 0.1, 1.5, frame);                          // roof
+    at(0, -1.25, YB + 1.3, 3.6, 2.3, 0.05, glass);                          // back pane (sidewalk side)
+    for (const u of [-1.85, 1.85]) at(u, -0.6, YB + 1.3, 0.05, 2.3, 1.3, glass);
+    for (const u of [-1.85, 1.85]) for (const o of [-1.25, 0.05]) at(u, o, YB + 1.27, 0.08, 2.55, 0.08, frame);
+    at(0.4, -0.95, YB + 0.45, 2.0, 0.08, 0.4, hex(0x6d4c2f));                // bench
+    // lit ad box at one end
+    const ex = x + ux * 1.55 + nx * -0.62, ez = z + uz * 1.55 + nz * -0.62;
+    P.sCrown.add(ex, YB + 1.35, ez, Math.abs(ux) > 0.5 ? 0.06 : 1.0, 1.6, Math.abs(ux) > 0.5 ? 1.0 : 0.06);
+    // stop sign pole
+    const px = x + ux * 2.6 + nx * 0.1, pz = z + uz * 2.6 + nz * 0.1;
+    P.sCyl.add(px, YB + 1.5, pz, 0.07, 3, 0.07, hex(0x7f8c8d));
+    P.sBox.add(px, YB + 2.75, pz, Math.abs(ux) > 0.5 ? 0.06 : 0.55, 0.5, Math.abs(ux) > 0.5 ? 0.55 : 0.06, hex(0x1f5fa8));
+    const lo = { x: x + ux * -1.9 + nx * -1.3, z: z + uz * -1.9 + nz * -1.3 }, hi = { x: x + ux * 1.9 + nx * 0.15, z: z + uz * 1.9 + nz * 0.15 };
+    addCollider(Math.min(lo.x, hi.x), Math.min(lo.z, hi.z), Math.max(lo.x, hi.x), Math.max(lo.z, hi.z), YB + 2.6, 'shelter');
+    City.shelters.push({ x, z, nx, nz });
+  }
+
+  // Bike-share dock: kiosk plus a row of blue bikes pointing at the kerb.
+  function bikeDock(x, z, nx, nz, n) {
+    const ux = -nz, uz = nx, blue = hex(0x3db7e4), dark = hex(0x2d3436);
+    const alongX = Math.abs(ux) > 0.5;
+    P.sBox.add(x, YB + 0.95, z, alongX ? 0.5 : 0.4, 1.9, alongX ? 0.4 : 0.5, blue);
+    P.sBox.add(x + nx * 0.21, YB + 1.45, z + nz * 0.21, alongX ? 0.32 : 0.02, 0.3, alongX ? 0.02 : 0.32, hex(0x26323d));
+    for (let k = 1; k <= n; k++) {
+      const bx = x + ux * k * 0.85, bz = z + uz * k * 0.85;
+      P.sBox.add(bx - nx * 0.75, YB + 0.35, bz - nz * 0.75, 0.12, 0.7, 0.12, dark); // dock post
+      for (const o of [-0.5, 0.45]) P.sCyl.add(bx + nx * o, YB + 0.34, bz + nz * o, 0.64, 0.05, 0.64, hex(0x222222), 0, alongX ? 0 : Math.PI / 2, alongX ? Math.PI / 2 : 0);
+      P.sBox.add(bx, YB + 0.62, bz, alongX ? 0.06 : 0.85, 0.08, alongX ? 0.85 : 0.06, blue);                  // top tube
+      P.sBox.add(bx - nx * 0.15, YB + 0.5, bz - nz * 0.15, alongX ? 0.06 : 0.5, 0.25, alongX ? 0.5 : 0.06, blue);
+      P.sBox.add(bx - nx * 0.3, YB + 0.85, bz - nz * 0.3, alongX ? 0.18 : 0.26, 0.06, alongX ? 0.26 : 0.18, dark);   // seat
+      P.sBox.add(bx + nx * 0.4, YB + 0.95, bz + nz * 0.4, alongX ? 0.55 : 0.05, 0.05, alongX ? 0.05 : 0.55, dark);  // handlebar
+      P.sBox.add(bx + nx * 0.52, YB + 0.72, bz + nz * 0.52, alongX ? 0.28 : 0.22, 0.2, alongX ? 0.22 : 0.28, blue); // basket
+    }
+    const e = { x: x + ux * (n + 0.5) * 0.85, z: z + uz * (n + 0.5) * 0.85 };
+    addCollider(Math.min(x, e.x) - 0.6, Math.min(z, e.z) - 0.6, Math.max(x, e.x) + 0.6, Math.max(z, e.z) + 0.6, YB + 1.1, 'bikes');
+  }
+
+  // Billboard on a roof facing the street (n = outward normal of the facade), lit at night.
+  function billboard(x, z, y, nx, nz, w, XR) {
+    const ux = -nz, uz = nx, H = w * 0.48, base = y + 2.2, dark = hex(0x2d3436);
+    const alongX = Math.abs(ux) > 0.5;
+    for (const u of [-w * 0.32, w * 0.32]) P.sBox.add(x + ux * u - nx * 0.4, (y + base) / 2, z + uz * u - nz * 0.4, 0.25, base - y, 0.25, dark);
+    P.sBox.add(x - nx * 0.18, base + H / 2, z - nz * 0.18, alongX ? w + 0.3 : 0.25, H + 0.3, alongX ? 0.25 : w + 0.3, dark);
+    P.sBox.add(x + nx * 0.4, base - 0.05, z + nz * 0.4, alongX ? w : 0.9, 0.08, alongX ? 0.9 : w, hex(0x5d6266));
+    for (const u of [-w * 0.33, 0, w * 0.33]) P.sLamp.add(x + ux * u + nx * 0.85, base - 0.15, z + uz * u + nz * 0.85, 0.35, 0.18, 0.35);
+    const ad = XR.int(0, 7), col = ad % 2, row = ad >> 1, u0 = col * 0.5, u1 = u0 + 0.5, v1 = 1 - row * 0.25, v0 = v1 - 0.25;
+    const A = [x - ux * w / 2 - nx * 0.04 + nx * 0.03, z - uz * w / 2 - nz * 0.04 + nz * 0.03], B2 = [x + ux * w / 2 + nx * 0.03 - nx * 0.04, z + uz * w / 2 + nz * 0.03 - nz * 0.04];
+    City.adGeo.quad([A[0], base, A[1]], [B2[0], base, B2[1]], [B2[0], base + H, B2[1]], [A[0], base + H, A[1]], [nx, 0, nz], [1, 1, 1],
+      [u0, v0, u1, v0, u1, v1, u0, v1]);
+  }
+
   City.build = function (scene, pools) {
     P = pools;
     R = CB.rng(1871); // year of the Great Chicago Fire
     G = new CB.Geo({ world: 3 });
     City.aoGeo = new CB.Geo();
+    City.adGeo = new CB.Geo();
+    City.courts = []; City.hoops = []; City.shelters = [];
     // blocks
     for (let bi = 0; bi < C.N; bi++) {
       for (let bj = 0; bj < C.N; bj++) {
@@ -1768,6 +2099,7 @@
         case 'bigjohn': bigJohn(b); break;
         case 'river': genRiverBlock(b); break;
         case 'park': genPark(b, 'park'); break;
+        case 'construction': genConstruction(b); break;
         case 'bean': genPark(b, 'bean'); break;
         case 'fountain': genPark(b, 'fountain'); break;
         case 'parking': genParking(b, b.bi === 1 ? 1 : b.bi === 14 ? -1 : 0); break;
@@ -1831,6 +2163,14 @@
     groundMat.specularPower = 24;
     groundMat.diffuseTexture = detail;
     City.mats.ground = groundMat;
+    // billboards: ad atlas, lit at night through the emissive texture
+    const ads = CB.CityTex.ads(scene);
+    const adMat = new B.StandardMaterial('ads', scene);
+    adMat.diffuseTexture = ads; adMat.emissiveTexture = ads; adMat.emissiveColor = new B.Color3(0, 0, 0);
+    adMat.specularColor = new B.Color3(0.08, 0.08, 0.08);
+    City.mats.ads = adMat;
+    if (City.adGeo.count) { City.adMesh = City.adGeo.build('billboards', scene, adMat); City.adMesh.receiveShadows = true; }
+    City.adGeo = null;
     // contact shadows
     const aoMat = new B.StandardMaterial('ao', scene);
     aoMat.disableLighting = true; aoMat.diffuseColor = new B.Color3(0, 0, 0);

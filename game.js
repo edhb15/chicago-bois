@@ -40,7 +40,7 @@
     setLoad('Opening shops and neon signs…', 0.55);
     await later(() => { CB.Activities.init(scene); CB.Pools.finishStatic(); });
     setLoad('Starting the L train…', 0.7);
-    await later(() => { CB.FX.init(scene); CB.Police.init(scene); CB.Landmarks.init(scene); CB.HUD.init(); setupWorld(); });
+    await later(() => { CB.FX.init(scene); CB.Police.init(scene); CB.Landmarks.init(scene); CB.Ambient.init(scene); CB.HUD.init(); setupWorld(); });
     setLoad('Hitting the streets…', 0.85);
     await later(() => {
       makePlayer();
@@ -321,6 +321,7 @@
     const wn = night * 0.95;
     // (emissive textures are added on top of the emissive colour, so their level is the dimmer)
     for (const k of ['office', 'brick', 'stone', 'glass']) City.mats[k].emissiveTexture.level = wn;
+    if (City.mats.ads) City.mats.ads.emissiveTexture.level = 0.08 + night * 0.55;
     City.mats.sign.emissiveTexture.level = 0.75 + 0.45 * night;
     City.mats.sign.emissiveColor.set(0, 0, 0);
     P.matLamp.emissiveColor.set(M.lerp(0.35, 1, night), M.lerp(0.34, 0.88, night), M.lerp(0.32, 0.62, night));
@@ -345,7 +346,8 @@
 
   // =================================================================== player
   function makePlayer() {
-    const h = new CB.Human(CB.playerLook(0));
+    game.character = CB.loadCharacter();
+    const h = new CB.Human(game.character);
     h.onStep = (run) => { if (!pl.inCar) CB.Audio.play('step', run ? 0.9 : 0.55); };
     h.addWeapons();
     pl = game.player = {
@@ -361,7 +363,7 @@
       pose: null, poseT: 0, stunT: 0, downT: 0, disguiseT: 0, look: 0, dead: false, lastHurt: -99, swingT: 0,
       ammo: GUN.mag, fireT: 0, reloadT: 0, aiming: false });
     setWeapon('bat', true);
-    pl.human.recolor(CB.playerLook(0));
+    pl.human.recolor(game.character);
     pl.human.setVisible(true);
     game.camYaw = s.yaw; game.camPitch = 0.28;
   }
@@ -411,7 +413,7 @@
     }
     pl.x = M.clamp(pl.x, C.WORLD.x0 + 0.5, C.PIER.x1 - 0.5);
     pl.z = M.clamp(pl.z, C.WORLD.z0 + 0.5, C.WORLD.z1 - 0.5);
-    if (City.groundY(pl.x, pl.z) < -1) { pl.x = ox; pl.z = oz; pl.vx = pl.vz = 0; }
+    if (City.inWater(pl.x, pl.z)) { pl.x = ox; pl.z = oz; pl.vx = pl.vz = 0; }
     // vertical
     const support = City.supportY(pl.x, pl.z, 0.38, pl.y, 0.45);
     if (pl.grounded && (k.Space) && !busy && pl.downT <= 0 && pl.stunT <= 0) { pl.vy = 6.4; pl.grounded = false; CB.Audio.play('whoosh', 0.3); }
@@ -764,8 +766,7 @@
   game.playerHit = playerHit;
 
   game.disguise = function () {
-    pl.look = (pl.look % 4) + 1;
-    pl.human.recolor(CB.playerLook(pl.look));
+    pl.human.recolor(CB.disguiseLook(game.character));
     pl.disguiseT = 150;
     CB.Audio.play('whoosh', 0.8);
     CB.FX.burst('paper', pl.x, 1.2, pl.z, 25);
@@ -933,7 +934,7 @@
   }
 
   // =================================================================== screens / UI
-  const SCREENS = ['menu', 'controls', 'settings', 'pause', 'gameover', 'victory', 'clickResume'];
+  const SCREENS = ['menu', 'character', 'controls', 'settings', 'pause', 'gameover', 'victory', 'clickResume'];
   let panelReturn = 'menu';
   function showScreen(id) {
     for (const s of SCREENS) $(s).classList.toggle('hidden', s !== id);
@@ -950,6 +951,8 @@
   function bindUI() {
     const click = (id, fn) => $(id).addEventListener('click', (e) => { e.stopPropagation(); CB.Audio.init(); CB.Audio.play('blip', 0.5); fn(); });
     click('btnPlay', startGame);
+    click('btnCharacter', openCharacter);
+    click('btnCharDone', closeCharacter);
     click('btnControls', () => { panelReturn = 'menu'; showScreen('controls'); });
     click('btnSettings', () => { panelReturn = 'menu'; openSettings(); });
     click('btnResume', resume);
@@ -1022,6 +1025,20 @@
     window.addEventListener('keydown', first);
   }
 
+  // Character screen: the player model on a stage on the pier, edited live.
+  function openCharacter() {
+    if (game.state !== 'menu') return;
+    game.state = 'character';
+    showScreen('character');
+    CB.CharScreen.open(game);
+  }
+  function closeCharacter() {
+    if (game.state !== 'character') return;
+    CB.CharScreen.close();
+    game.state = 'menu';
+    showScreen('menu');
+  }
+
   function openSettings() {
     const S = CB.settings;
     $('setQuality').value = S.quality; $('setMaster').value = S.master; $('setMusic').value = S.music;
@@ -1035,6 +1052,7 @@
     if (e.code === 'Escape') {
       if (game.state === 'playing') { if (CB.HUD.bigOpen) CB.HUD.toggleBigMap(false); else pause(); }
       else if (game.state === 'paused') resume();
+      else if (game.state === 'character') closeCharacter();
       else if (!$('controls').classList.contains('hidden') || !$('settings').classList.contains('hidden')) showScreen(panelReturn);
       return;
     }
@@ -1674,10 +1692,11 @@
       CB.FX.update(simDt, fx, fz);
       updateTracers(simDt);
       CB.Landmarks.update(simDt, game, fx, fz);
+      CB.Ambient.update(simDt, game, camera.position.x, camera.position.z);
       CB.City.updateSignals(game.time);
       updateCasters(simDt, fx, fz);
       autoQuality(simDt);
-      if (live) updateCamera(simDt); else menuCamera(simDt);
+      if (live) updateCamera(simDt); else if (game.state === 'character') CB.CharScreen.update(simDt); else menuCamera(simDt);
       if (playing || live) CB.HUD.update(game, simDt);
     }
     CB.Pools.flush();

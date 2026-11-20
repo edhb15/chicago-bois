@@ -16,7 +16,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Anton&family=Barlow+Condensed:wght@500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=6">
+    <link rel="stylesheet" href="style.css?v=7">
 </head>
 <body>
     <canvas id="renderCanvas" tabindex="0"></canvas>
@@ -98,11 +98,25 @@
             <div class="flagstars">✶ ✶ ✶ ✶</div>
             <div class="menu-buttons">
                 <button id="btnPlay" class="big">▶ PLAY</button>
+                <button id="btnCharacter">CHARACTER</button>
                 <button id="btnControls">CONTROLS</button>
                 <button id="btnSettings">SETTINGS</button>
             </div>
             <div class="menu-foot">Rob stores, crack locks, race the streets and tag the alleys of the Windy City.<br>Fill all five wanted stars before the cops put you in cuffs.</div>
         </div>
+    </div>
+
+    <div id="character" class="screen hidden">
+        <div class="char-panel">
+            <h2>YOUR CHARACTER <small id="charName"></small></h2>
+            <div class="char-presets" id="charPresets"></div>
+            <div class="char-opts" id="charOpts"></div>
+            <div class="char-actions">
+                <button id="btnCharRandom">🎲 RANDOM</button>
+                <button id="btnCharDone" class="big">✔ DONE</button>
+            </div>
+        </div>
+        <div class="char-hint">Drag to turn · Scroll to zoom</div>
     </div>
 
     <div id="controls" class="screen hidden panel-screen">
@@ -124,6 +138,7 @@
             </div>
             <h3>HOW TO PLAY</h3>
             <ul class="howto">
+                <li>Pick <b>CHARACTER</b> in the main menu to choose a ready-made character or make your own: body, height, skin, hair, beard, hat, shades, clothes and colours.</li>
                 <li>Every crime fills the <b>wanted meter</b>. Small stuff gives +10%, robberies +25–40%, the bank vault and the armored truck +60%.</li>
                 <li>Fill all <b>five stars</b> to win. Each star makes the cops faster, smarter and meaner – at five stars a chopper joins the hunt.</li>
                 <li>Cops who see you will chase. <b>Break line of sight</b>, duck into alleys, hide in dumpsters or bushes, or buy a <b>disguise</b> to escape.</li>
@@ -194,18 +209,20 @@
     <div id="noWebgl" class="screen hidden"><div class="panel narrow"><h2>NO 3D SUPPORT</h2><p>Your browser could not start WebGL. Try a recent Chrome, Edge, Firefox or Safari on a computer.</p></div></div>
 
     <script src="lib/babylon.js"></script>
-    <script src="js/util.js?v=6"></script>
-    <script src="js/pools.js?v=6"></script>
-    <script src="js/audio.js?v=6"></script>
-    <script src="js/citytex.js?v=6"></script>
-    <script src="js/city.js?v=6"></script>
-    <script src="js/characters.js?v=6"></script>
-    <script src="js/vehicles.js?v=6"></script>
-    <script src="js/police.js?v=6"></script>
-    <script src="js/effects.js?v=6"></script>
-    <script src="js/activities.js?v=6"></script>
-    <script src="js/landmarks.js?v=6"></script>
-    <script src="js/hud.js?v=6"></script>
-    <script src="game.js?v=6"></script>
+    <script src="js/util.js?v=7"></script>
+    <script src="js/pools.js?v=7"></script>
+    <script src="js/audio.js?v=7"></script>
+    <script src="js/citytex.js?v=7"></script>
+    <script src="js/city.js?v=7"></script>
+    <script src="js/characters.js?v=7"></script>
+    <script src="js/vehicles.js?v=7"></script>
+    <script src="js/police.js?v=7"></script>
+    <script src="js/effects.js?v=7"></script>
+    <script src="js/activities.js?v=7"></script>
+    <script src="js/landmarks.js?v=7"></script>
+    <script src="js/ambient.js?v=7"></script>
+    <script src="js/hud.js?v=7"></script>
+    <script src="js/charscreen.js?v=7"></script>
+    <script src="game.js?v=7"></script>
 </body>
 </html>

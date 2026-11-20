@@ -158,7 +158,7 @@
       let gy = City.groundY(this.x, this.z);
       // walls taller than a curb step stop the car (e.g. driving into the back of a ramp)
       if (gy > this.y + 0.6) { this.x = ox; this.z = oz; this.vx *= -0.3; this.vz *= -0.3; gy = City.groundY(ox, oz); this.crash(8); }
-      if (gy < -1) { // driving into the lake: stop at the edge
+      if (City.inWater(this.x, this.z)) { // driving into the lake: stop at the edge
         this.x = ox; this.z = oz; this.vx = 0; this.vz = 0; gy = City.groundY(ox, oz);
       }
       const onRamp = City.rampAt(this.x, this.z);

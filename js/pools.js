@@ -315,10 +315,11 @@
       const mk = (fn, mat, name) => { const m = fn(); m.name = name; m.material = mat; return m; };
 
       // Dynamic (updated every frame)
-      this.box = new DynPool(mk(box, this.matDyn, 'dBox'), 12000, true);
+      this.box = new DynPool(mk(box, this.matDyn, 'dBox'), 16000, true);
       this.shiny = new DynPool(mk(box, this.matShiny, 'dShiny'), 1600, true);
-      this.cyl = new DynPool(mk(() => cyl(8), this.matDyn, 'dCyl'), 7600, true);
-      this.sph = new DynPool(mk(sph, this.matDyn, 'dSph'), 300, true);
+      this.cyl = new DynPool(mk(() => cyl(8), this.matDyn, 'dCyl'), 11000, true);
+      // people's heads, hair and shoulders: a lighter sphere (smooth normals keep it round)
+      this.sph = new DynPool(mk(() => B.MeshBuilder.CreateSphere('sph', { diameter: 1, segments: 4 }, scene), this.matDyn, 'dSph'), 2200, true);
       this.matGlowW = glow('gW', [1, 0.97, 0.85]);
       this.matGlowR = glow('gR', [1, 0.08, 0.05]);
       this.matGlowB = glow('gB', [0.1, 0.35, 1]);
