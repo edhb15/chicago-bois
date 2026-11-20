@@ -184,6 +184,82 @@
       return t;
     },
 
+    // Billboard ads: 2 x 4 atlas of 512x256 posters for made-up local brands.
+    ads(scene) {
+      const W = 1024, H = 1024, AW = 512, AH = 256;
+      const tex = dt(scene, 'ads', W, H);
+      tex.wrapU = tex.wrapV = B.Texture.CLAMP_ADDRESSMODE;
+      const c = tex.getContext();
+      const T = (txt, x, y, size, col, align, font, stroke) => {
+        c.font = `${size}px ${font || SIGN_FONT}`; c.textAlign = align || 'left'; c.textBaseline = 'middle';
+        if (stroke) { c.lineWidth = size * 0.12; c.strokeStyle = stroke; c.lineJoin = 'round'; c.strokeText(txt, x, y); }
+        c.fillStyle = col; c.fillText(txt, x, y);
+      };
+      const ad = (i, draw) => { const x = (i % 2) * AW, y = (i >> 1) * AH; c.save(); c.translate(x, y); c.beginPath(); c.rect(0, 0, AW, AH); c.clip(); draw(); c.restore(); };
+      // 0: deep dish pizza
+      ad(0, () => {
+        c.fillStyle = '#b71c1c'; c.fillRect(0, 0, AW, AH);
+        c.fillStyle = '#f9c74f'; c.beginPath(); c.arc(395, 135, 100, 0, Math.PI * 2); c.fill();
+        c.fillStyle = '#d62828'; c.beginPath(); c.arc(395, 135, 82, 0, Math.PI * 2); c.fill();
+        c.fillStyle = '#fff3c4'; for (const [a, r] of [[0.3, 40], [1.5, 55], [2.6, 35], [3.9, 52], [5.0, 30]]) { c.beginPath(); c.arc(395 + Math.cos(a) * r, 135 + Math.sin(a) * r, 14, 0, Math.PI * 2); c.fill(); }
+        T('DEEP DISH', 26, 82, 74, '#ffffff', 'left', null, '#5c0a0a'); T('DONE RIGHT', 30, 160, 46, '#f9c74f'); T('LOU\'S SINCE 1971', 32, 215, 28, '#ffe0e0', 'left', 'Barlow Condensed, sans-serif');
+      });
+      // 1: cola
+      ad(1, () => {
+        const g = c.createLinearGradient(0, 0, AW, 0); g.addColorStop(0, '#d00000'); g.addColorStop(1, '#ff4d4d'); c.fillStyle = g; c.fillRect(0, 0, AW, AH);
+        c.strokeStyle = '#ffffff'; c.lineWidth = 16; c.beginPath(); c.moveTo(0, 190); c.bezierCurveTo(150, 120, 330, 250, AW, 170); c.stroke();
+        T('CHI-TOWN', 30, 70, 70, '#ffffff'); T('COLA', 30, 140, 70, '#ffffff'); T('ICE COLD.', 330, 100, 40, '#ffe5e5', 'left');
+        c.fillStyle = '#7a0000'; c.fillRect(420, 120, 50, 110); c.fillStyle = '#ffffff'; c.fillRect(420, 160, 50, 22);
+      });
+      // 2: insurance
+      ad(2, () => {
+        c.fillStyle = '#0d3b66'; c.fillRect(0, 0, AW, AH);
+        c.strokeStyle = '#8ecae6'; c.lineWidth = 8; for (let k = 0; k < 4; k++) { c.beginPath(); c.moveTo(330, 60 + k * 40); c.bezierCurveTo(380, 30 + k * 40, 420, 90 + k * 40, 490, 55 + k * 40); c.stroke(); }
+        T('WINDY CITY', 26, 70, 60, '#ffffff'); T('INSURANCE', 26, 132, 60, '#8ecae6'); T('We cover the wind.', 28, 200, 34, '#f4f4f4', 'left', 'Barlow Condensed, sans-serif');
+      });
+      // 3: vote for mayor
+      ad(3, () => {
+        c.fillStyle = '#f4f1e8'; c.fillRect(0, 0, AW, AH);
+        c.fillStyle = '#1d3557'; c.fillRect(0, 0, AW, 54); c.fillStyle = '#e63946'; c.fillRect(0, AH - 40, AW, 40);
+        T('★ VOTE ★', AW / 2, 27, 40, '#ffffff', 'center');
+        T('BIG TONY', AW / 2, 112, 84, '#1d3557', 'center'); T('FOR MAYOR', AW / 2, 178, 48, '#e63946', 'center');
+        T('"Fuggedaboutit."', AW / 2, AH - 20, 28, '#ffffff', 'center', 'Barlow Condensed, sans-serif');
+      });
+      // 4: italian beef
+      ad(4, () => {
+        c.fillStyle = '#fefae0'; c.fillRect(0, 0, AW, AH);
+        c.fillStyle = '#bc6c25'; c.beginPath(); c.ellipse(390, 140, 105, 45, -0.1, 0, Math.PI * 2); c.fill();
+        c.fillStyle = '#6a3d1a'; c.fillRect(300, 130, 180, 18); c.fillStyle = '#2d6a4f'; for (let k = 0; k < 7; k++) { c.beginPath(); c.arc(310 + k * 25, 126, 8, 0, Math.PI * 2); c.fill(); }
+        T('ITALIAN', 26, 70, 62, '#bc6c25'); T('BEEF', 26, 138, 74, '#283618'); T('dipped. hot. messy.', 28, 205, 32, '#606c38', 'left', 'Barlow Condensed, sans-serif');
+      });
+      // 5: skydeck
+      ad(5, () => {
+        const g = c.createLinearGradient(0, 0, 0, AH); g.addColorStop(0, '#03045e'); g.addColorStop(1, '#0077b6'); c.fillStyle = g; c.fillRect(0, 0, AW, AH);
+        c.fillStyle = '#111'; c.fillRect(380, 20, 70, AH); c.fillRect(395, 0, 6, 30); c.fillRect(430, 0, 6, 30);
+        c.fillStyle = '#90e0ef'; for (let y = 40; y < AH; y += 18) for (let x = 386; x < 446; x += 14) c.fillRect(x, y, 8, 9);
+        T('SKYDECK', 26, 80, 76, '#ffffff'); T('LOOK DOWN.', 28, 150, 44, '#90e0ef'); T('IF YOU DARE.', 28, 200, 36, '#caf0f8');
+      });
+      // 6: hot dogs
+      ad(6, () => {
+        c.fillStyle = '#ffd60a'; c.fillRect(0, 0, AW, AH);
+        c.fillStyle = '#e9c46a'; c.beginPath(); c.ellipse(380, 150, 115, 40, 0, 0, Math.PI * 2); c.fill();
+        c.fillStyle = '#9d2c1a'; c.beginPath(); c.ellipse(380, 140, 120, 18, 0, 0, Math.PI * 2); c.fill();
+        c.strokeStyle = '#e9d700'; c.lineWidth = 6; c.beginPath(); c.moveTo(280, 135); for (let k = 0; k < 9; k++) c.lineTo(290 + k * 22, k % 2 ? 128 : 142); c.stroke();
+        c.fillStyle = '#2b9348'; for (let k = 0; k < 5; k++) c.fillRect(300 + k * 32, 150, 14, 8);
+        T('CHI-DOGS', 26, 72, 70, '#d00000', 'left', null, '#ffffff'); T('NO KETCHUP.', 28, 150, 46, '#1b1b1b'); T('EVER.', 28, 205, 46, '#d00000');
+      });
+      // 7: radio
+      ad(7, () => {
+        c.fillStyle = '#240046'; c.fillRect(0, 0, AW, AH);
+        for (let k = 0; k < 5; k++) { c.strokeStyle = `rgba(224,170,255,${0.8 - k * 0.14})`; c.lineWidth = 6; c.beginPath(); c.arc(420, 128, 30 + k * 26, -0.9, 0.9); c.stroke(); }
+        T('WBOI 104.5', 26, 76, 64, '#e0aaff'); T('CHICAGO HOUSE', 28, 140, 44, '#ffffff'); T('ALL NIGHT LONG', 28, 196, 38, '#c77dff');
+      });
+      // frame lines between posters
+      c.fillStyle = '#111'; for (let k = 1; k < 4; k++) c.fillRect(0, k * AH - 2, W, 4); c.fillRect(AW - 2, 0, 4, H);
+      tex.update();
+      return tex;
+    },
+
     graffiti(scene) {
       const W = 1024, H = 512;
       const tex = new B.DynamicTexture('graffiti', { width: W, height: H }, scene, true);

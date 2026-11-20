@@ -1,6 +1,6 @@
 # Chicago Bois
 
-A chaotic, slightly comedic 3D open-world crime sandbox set in a cartoon version of Chicago: a 16×16-block city with the Loop and its elevated train, a ballpark, the Chicago River with steel bridges, tour boats and a riverwalk, the lakefront, Navy-Pier-style Ferris wheel and a skyline of art-deco and glass towers. Walk into shops and apartments, rob the till, crack locks, steal cars, race the streets and tag the alleys – and fill all **five wanted stars** before the cops put you in cuffs.
+A chaotic, slightly comedic 3D open-world crime sandbox set in a cartoon version of Chicago: a 16×16-block city with the Loop and its elevated train, a ballpark, a skyscraper going up under a tower crane, a beach with sailboats offshore, the Chicago River with steel bridges, tour boats and a riverwalk, the lakefront, Navy-Pier-style Ferris wheel and a skyline of art-deco and glass towers. Walk into shops and apartments, rob the till, crack locks, steal cars, race the streets and tag the alleys – and fill all **five wanted stars** before the cops put you in cuffs.
 
 **Play:** https://edhb15.github.io/chicago-bois/
 
@@ -32,6 +32,20 @@ A chaotic, slightly comedic 3D open-world crime sandbox set in a cartoon version
 - **Escaping:** break line of sight, duck into alleys, hide in dumpsters or bushes, or buy a disguise at a thrift store. When the search timer runs out you've escaped.
 - **Busted:** officers next to you fill the arrest meter (shove them or run). If it fills, or your health hits zero, it's game over.
 
+## Your character
+
+Choose **CHARACTER** in the main menu. Pick one of six ready-made characters (Dre, Rosa, Big Tony, Maya, Jimmy, Kenji) or build your own: male or female body, slim/regular/heavy build, height, skin tone, nine hair styles and colours, facial hair, eye colour, cap or beanie, shades, T-shirt/long sleeves/hoodie/open jacket/tank top, long pants or shorts, shoe colour and a gold chain. Drag to turn the character, scroll to zoom. Your choice is saved in the browser. A disguise from the thrift store changes your clothes but keeps your face.
+
+Everyone in the city is built the same way – proportioned bodies with knees and elbows, faces, hair styles and outfits – and walks, runs, sits and sunbathes with matching animations.
+
+## Around the city
+
+- **Construction site** east of the Loop: a tower going up floor by floor behind a plywood fence, with a working tower crane (it turns, runs its trolley and lifts steel beams), an excavator, a cement mixer, a site office and a dumpster to hide in.
+- **The beach** north of the river mouth: walk down the sand into the shallows. Umbrellas, sunbathers, swimmers, a volleyball game, a lifeguard chair, rock breakwaters and sailboats at anchor.
+- **Parks** have basketball courts (pickup games on the one nearest to you) and playgrounds.
+- **Streets**: bus shelters with lit ads, bike-share docks, food trucks, and billboards on shop roofs that light up at night.
+- **Sky**: airliners cross over the city now and then, nav lights blinking.
+
 ## Walk-in buildings
 
 Every store and many apartments have an open front door you can walk through. Stores are furnished to match – a bank with teller windows and a vault, jewelry display cases, electronics shelves, a pizzeria, a thrift store – and the robbery happens at the counter, right in front of the shopkeeper. Apartments have a living room to search for valuables (+10%; sometimes a stash under the mattress). The camera moves in over your shoulder indoors, and police follow you inside, so a shop with one door can turn into a trap.
@@ -60,8 +74,10 @@ Plain HTML/CSS/JavaScript with [Babylon.js](https://www.babylonjs.com/) 8.20 (`l
 | `game.js` | Engine setup, day/night cycle, player, camera, driving, collisions, game flow, menus |
 | `js/util.js` | Constants, seeded RNG, settings |
 | `js/pools.js` | Thin-instance pools and rigs (fast rendering of people, cars and props), mesh builder |
-| `js/city.js`, `js/citytex.js` | City generator (blocks, river, bridges, towers, ballpark, furnished interiors), procedural textures, collision, navigation grid, traffic lights |
-| `js/characters.js` | People and pedestrian AI |
+| `js/city.js`, `js/citytex.js` | City generator (blocks, river, bridges, towers, ballpark, beach, construction site, courts, shelters, billboards, furnished interiors), procedural textures and ads, collision, navigation grid, traffic lights |
+| `js/characters.js` | People (bodies, faces, hair, clothes, animation), looks and presets, pedestrian AI |
+| `js/charscreen.js` | Character select / customisation screen with the 3D preview |
+| `js/ambient.js` | Tower crane, airliners, sailboats, beachgoers, volleyball and basketball games |
 | `js/vehicles.js` | Car models, arcade physics, traffic on the street grid |
 | `js/police.js` | Wanted level, police AI (officers, cruisers, chopper), arrests |
 | `js/activities.js` | Robberies, break-ins, vandalism, races, ramps, hiding… |
