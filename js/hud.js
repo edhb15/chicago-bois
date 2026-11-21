@@ -105,7 +105,7 @@
   HUD.notify = function (title, sub, color) {
     const d = document.createElement('div');
     d.className = 'note ' + (color || '');
-    d.innerHTML = `<b>${title}</b>${sub ? '<span>' + sub + '</span>' : ''}`;
+    d.innerHTML = CB.Touch.text(`<b>${title}</b>${sub ? '<span>' + sub + '</span>' : ''}`);
     this.el.notes.prepend(d);
     requestAnimationFrame(() => d.classList.add('in'));
     setTimeout(() => { d.classList.remove('in'); d.classList.add('out'); }, 4200);
@@ -151,7 +151,7 @@
     this._pt = text;
     e.prompt.classList.remove('hidden');
     e.prompt.classList.toggle('no', !ok);
-    e.prompt.innerHTML = (ok ? '<kbd>E</kbd> ' : '') + text;
+    e.prompt.innerHTML = CB.Touch.text((ok ? '<kbd>E</kbd> ' : '') + text);
   };
 
   // ------------------------------------------------------------------ per-frame update
