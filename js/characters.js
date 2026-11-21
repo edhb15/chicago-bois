@@ -34,6 +34,9 @@
       glasses: Math.random() < 0.12 ? 'shades' : 'none',
       top, topCol: pick(TOP_COLS), accent: pick([0xf4f4f4, 0x111111, 0x7f8c8d, 0xc8102e]),
       bottom: Math.random() < 0.15 ? 'shorts' : 'jeans', pantsCol: pick(PANTS_COLS), shoes: pick(SHOE_COLS), chain: false,
+      // little extras (not in the character screen): watch, backpack, headphones, earrings
+      watch: Math.random() < 0.4, backpack: Math.random() < 0.14, phones: Math.random() < 0.08, earrings: Math.random() < (f ? 0.35 : 0.08),
+      packCol: pick(TOP_COLS),
     };
   };
   // Ready-made characters for the character screen (the first one is the default player).
@@ -72,7 +75,8 @@
   CB.copLook = function () {
     const L = CB.randomLook();
     return Object.assign(L, { top: 'long', topCol: 0x1f2f5c, bottom: 'jeans', pantsCol: 0x141c33, shoes: 0x111111, hat: 'police', hatCol: 0x1f2f5c,
-      glasses: Math.random() < 0.15 ? 'shades' : 'none', hair: L.body === 'f' ? 'bun' : pick(['short', 'buzz', 'bald']), facial: L.body === 'f' ? 'none' : pick(['none', 'none', 'mustache']), cop: true, chain: false });
+      glasses: Math.random() < 0.15 ? 'shades' : 'none', hair: L.body === 'f' ? 'bun' : pick(['short', 'buzz', 'bald']), facial: L.body === 'f' ? 'none' : pick(['none', 'none', 'mustache']), cop: true, chain: false,
+      backpack: false, phones: false, watch: true, accent: 0x1f2f5c });
   };
   // A disguise: same person, new clothes (and maybe a hat and shades).
   CB.disguiseLook = function (base) {
@@ -109,6 +113,9 @@
       this.a = { thL: 0, thR: 0, knL: 0.05, knR: 0.05, upL: 0, upR: 0, rlL: -0.08, rlR: 0.08, elL: -0.15, elR: -0.15, erL: 0, erR: 0, lean: 0, twist: 0, hy: 0, hp: 0 };
       this.bob = 0; this.t = Math.random() * 10;
       this.onStep = null;
+      // face and hands: blink, mouth open, brows raised, fists (0..1)
+      this.ex = { blink: 0, mouth: 0, brow: 0, fistL: 0.15, fistR: 0.15 };
+      this.blinkT = 1 + Math.random() * 4; this.fear = false; this.lookAt = null;
       this.build(look);
     }
     // (Re)create all parts for a look; keeps weapons if the human had them.
@@ -120,7 +127,7 @@
       const hs = (look.height || 1) * (f ? 0.94 : 1), hh = Math.sqrt(hs);
       const w = slim ? 0.9 : heavy ? 1.1 : 1;
       const D = this.D = {
-        hs, shin: 0.43 * hs, thigh: 0.45 * hs, upper: 0.29 * hs, fore: 0.26 * hs,
+        hs, shin: 0.43 * hs, thigh: 0.45 * hs, upper: 0.29 * hs, fore: 0.26 * hs, palmEnd: -(0.048 + 0.0425 * hs),
         hipX: (f ? 0.098 : 0.09) * w, shX: (f ? 0.172 : 0.2) * w * (heavy ? 1.05 : 1),
       };
       D.hipY = 0.075 + D.shin + D.thigh;
@@ -130,29 +137,62 @@
       const skin = shade(look.skin, 1), top = shade(look.topCol, 1), pants = shade(look.pantsCol, 1), hairC = shade(look.hairCol, 1);
       const shoes = shade(look.shoes, 1), hatC = shade(look.hatCol, 1), acc = shade(look.accent, 1);
       const tank = look.top === 'tank', tee = look.top === 'tee';
-      this.parts = {};
+      this.parts = {}; this.detail = []; this.near = true;
       const add = (pool, name, j, o, sc, col, rot) => {
         const p = r.add(pool, { j, o, s: sc, c: col, yaw: rot && rot[0], pitch: rot && rot[1], roll: rot && rot[2] });
+        p.oy0 = p.oy; p.sy0 = p.sy; p.base = true;
         if (name) this.parts[name] = p;
         return p;
       };
+      // small details: hidden when the person is far from the camera
+      const det = (p) => { p.lod = true; this.detail.push(p); return p; };
+      this.torsoX = []; this.pelvisX = [];
       const z3 = [0, 0, 0];
       // legs
       for (const sd of ['L', 'R']) {
         add(P.cyl, 'thigh' + sd, z3, [0, -D.thigh / 2, 0], [0.155 * w * (heavy ? 1.12 : 1), D.thigh + 0.02, 0.16 * w * (heavy ? 1.12 : 1)], pants);
         add(P.cyl, 'shin' + sd, z3, [0, -D.shin / 2, 0], [0.112 * w, D.shin + 0.02, 0.118 * w], look.bottom === 'shorts' ? skin : pants);
         add(P.box, 'shoe' + sd, z3, [0, -0.04, 0.045], [0.105 * w, 0.075, 0.27 * Math.min(1.05, hs)], shoes);
+        const darkShoe = (look.shoes >> 16) + ((look.shoes >> 8) & 255) + (look.shoes & 255) < 200;
+        add(P.box, 'sole' + sd, z3, [0, -0.074, 0.048], [0.112 * w, 0.024, 0.282 * Math.min(1.05, hs)], darkShoe ? [0.93, 0.93, 0.9] : [0.16, 0.15, 0.15]);
+        det(add(P.box, 'lace' + sd, z3, [0, 0.0, 0.11], [0.06 * w, 0.012, 0.08], darkShoe ? [0.9, 0.9, 0.88] : shade(look.shoes, 0.8)));
+        if (look.bottom === 'shorts') add(P.cyl, 'sock' + sd, z3, [0, -D.shin + 0.06, 0], [0.116 * w, 0.1, 0.122 * w], [0.95, 0.95, 0.93]);
       }
       // torso: hips, waist, chest (elliptic cylinders read as a rounded body)
       add(P.cyl, 'pelvis', [0, D.hipY, 0], [0, 0.03 * hs, 0], [(f ? 0.37 : 0.335) * w, 0.17 * hs, 0.22 * w * (heavy ? 1.1 : 1)], pants);
-      if (look.bottom === 'jeans' || look.cop) add(P.cyl, null, [0, D.hipY, 0], [0, 0.105 * hs, 0], [(f ? 0.375 : 0.345) * w, 0.035, 0.228 * w * (heavy ? 1.1 : 1)], look.cop ? [0.05, 0.05, 0.05] : [0.12, 0.09, 0.07]);
+      if (look.bottom === 'jeans' || look.cop) {
+        this.pelvisX.push(add(P.cyl, 'belt', [0, D.hipY, 0], [0, 0.105 * hs, 0], [(f ? 0.375 : 0.345) * w, 0.035, 0.228 * w * (heavy ? 1.1 : 1)], look.cop ? [0.05, 0.05, 0.05] : [0.12, 0.09, 0.07]));
+        this.pelvisX.push(det(add(P.box, 'buckle', [0, D.hipY, 0], [0, 0.105 * hs, 0.114 * w * (heavy ? 1.1 : 1)], [0.045, 0.03, 0.012], [0.75, 0.72, 0.62])));
+      }
       const waistW = (f ? 0.275 : 0.31) * w * (heavy ? 1.28 : 1), waistD = 0.2 * w * (heavy ? 1.32 : 1);
       add(P.cyl, 'waist', [0, D.waistY, 0], [0, 0, 0], [waistW, 0.2 * hs, waistD], top);
       const chestW = (f ? 0.345 : 0.405) * w * (heavy ? 1.12 : 1), chestD = (f ? 0.235 : 0.24) * w * (heavy ? 1.16 : 1), chestH = 0.31 * hs;
       D.chestD = chestD; D.chestH = chestH;
       add(P.cyl, 'chest', [0, D.waistY, 0], [0, 0.085 * hs + chestH / 2, 0], [chestW, chestH, chestD], top);
       if (f) for (const sx of [-1, 1]) add(P.sph, 'bust' + (sx < 0 ? 'L' : 'R'), [0, D.waistY, 0], [sx * chestW * 0.19, 0.085 * hs + chestH * 0.58, chestD * 0.26], [chestW * 0.38, chestH * 0.36, chestD * 0.44], look.top === 'jacket' ? acc : top);
+      // rounded shoulder line (trapezius) and a collar
+      this.torsoX.push(add(P.sph, 'yoke', [0, D.waistY, 0], [0, 0.085 * hs + chestH - 0.012, -0.012], [chestW * 0.92, 0.12 * hs, chestD * 0.86], tank ? skin : top));
+      if (!tank) this.torsoX.push(det(add(P.cyl, 'collar', [0, D.waistY, 0], [0, 0.085 * hs + chestH + 0.012, -0.004], [0.13 * w * (heavy ? 1.15 : 1), 0.035, 0.135 * w * (heavy ? 1.15 : 1)],
+        look.top === 'jacket' ? acc : shade(look.topCol, 0.82))));
+      // print on T-shirts and tank tops (in the accent colour)
+      if ((tee || tank || look.top === 'long') && look.accent !== look.topCol && !look.cop) {
+        this.torsoX.push(det(add(P.box, 'print', [0, D.waistY, 0], [0, 0.085 * hs + chestH * 0.55, chestD / 2 + 0.002], [chestW * 0.3, chestH * 0.26, 0.01], acc)));
+        this.torsoX.push(det(add(P.box, 'print2', [0, D.waistY, 0], [0, 0.085 * hs + chestH * 0.33, chestD / 2 + 0.002], [chestW * 0.22, chestH * 0.05, 0.01], acc)));
+      }
       if (look.top === 'jacket') { // open jacket over a shirt
+        for (const sx of [-1, 1]) this.torsoX.push(det(add(P.box, 'lapel' + sx, [0, D.waistY, 0], [sx * chestW * 0.165, 0.085 * hs + chestH * 0.62, chestD / 2 + 0.001], [0.034, chestH * 0.62, 0.014], shade(look.topCol, 0.72))));
+      }
+      if (look.top === 'hoodie') {
+        for (const sx of [-1, 1]) this.torsoX.push(det(add(P.box, 'string' + sx, [0, D.waistY, 0], [sx * 0.035, 0.085 * hs + chestH - 0.07, chestD / 2 + 0.004], [0.008, 0.13, 0.008], [0.93, 0.93, 0.9])));
+        this.torsoX.push(det(add(P.box, 'zip', [0, D.waistY, 0], [0, 0.085 * hs + chestH * 0.35, chestD / 2 + 0.001], [0.01, chestH * 0.75, 0.008], shade(look.topCol, 0.6))));
+      }
+      if (look.backpack) {
+        const pc = shade(look.packCol || 0x2c3e50, 1);
+        this.torsoX.push(add(P.box, 'pack', [0, D.waistY, 0], [0, 0.085 * hs + chestH * 0.42, -chestD / 2 - 0.07], [chestW * 0.72, chestH * 1.05, 0.14], pc));
+        this.torsoX.push(det(add(P.box, 'packPocket', [0, D.waistY, 0], [0, 0.085 * hs + chestH * 0.2, -chestD / 2 - 0.145], [chestW * 0.5, chestH * 0.4, 0.02], shade(look.packCol || 0x2c3e50, 0.8))));
+        for (const sx of [-1, 1]) this.torsoX.push(det(add(P.box, 'strap' + sx, [0, D.waistY, 0], [sx * chestW * 0.22, 0.085 * hs + chestH * 0.62, chestD / 2 - 0.01], [0.03, chestH * 0.75, 0.02], shade(look.packCol || 0x2c3e50, 0.7))));
+      }
+      if (look.top === 'jacket') { // (inner shirt)
         add(P.box, 'jfront', [0, D.waistY, 0], [0, 0.085 * hs + chestH / 2, chestD / 2 - 0.004], [chestW * 0.28, chestH * 0.98, 0.012], acc);
         add(P.box, 'jfront2', [0, D.waistY, 0], [0, 0, waistD / 2 - 0.004], [waistW * 0.3, 0.2 * hs, 0.012], acc);
       }
@@ -168,8 +208,16 @@
         add(P.box, 'chain4', [0, D.waistY, 0], [0, cy - 0.085, cz + 0.003], [0.036, 0.046, 0.012], [1, 0.84, 0.2]);
       }
       if (look.cop) {
-        add(P.box, 'badge', [0, D.waistY, 0], [-chestW * 0.22, 0.085 * hs + chestH * 0.72, chestD / 2], [0.055, 0.065, 0.012], [0.95, 0.76, 0.18]);
-        add(P.box, 'holster', [0, D.hipY, 0], [0.19 * w, 0.03, 0.02], [0.05, 0.16, 0.1], [0.06, 0.06, 0.06]);
+        const blk = [0.05, 0.05, 0.05], cy = 0.085 * hs;
+        this.torsoX.push(add(P.box, 'badge', [0, D.waistY, 0], [-chestW * 0.22, cy + chestH * 0.72, chestD / 2], [0.055, 0.065, 0.012], [0.95, 0.76, 0.18]));
+        this.torsoX.push(det(add(P.box, 'nametag', [0, D.waistY, 0], [chestW * 0.22, cy + chestH * 0.7, chestD / 2], [0.07, 0.018, 0.01], [0.9, 0.9, 0.85])));
+        this.torsoX.push(det(add(P.box, 'mic', [0, D.waistY, 0], [-chestW * 0.3, cy + chestH * 0.92, chestD / 2 - 0.01], [0.035, 0.05, 0.025], blk)));
+        for (const sx of [-1, 1]) this.torsoX.push(det(add(P.box, 'pocket' + sx, [0, D.waistY, 0], [sx * chestW * 0.22, cy + chestH * 0.5, chestD / 2 + 0.001], [0.075, 0.06, 0.01], shade(look.topCol, 0.82))));
+        this.pelvisX.push(add(P.box, 'holster', [0, D.hipY, 0], [0.19 * w, 0.03, 0.02], [0.05, 0.16, 0.1], [0.06, 0.06, 0.06]));
+        this.pelvisX.push(det(add(P.box, 'radio', [0, D.hipY, 0], [-0.17 * w, 0.06, -0.05], [0.05, 0.1, 0.035], blk)));
+        this.pelvisX.push(det(add(P.box, 'antenna', [0, D.hipY, 0], [-0.17 * w, 0.14, -0.05], [0.008, 0.07, 0.008], blk)));
+        this.pelvisX.push(det(add(P.cyl, 'cuffs', [0, D.hipY, 0], [0.06, 0.08, -0.11 * w], [0.07, 0.03, 0.07], [0.7, 0.72, 0.75])));
+        for (const sx of [-1, 1]) this.pelvisX.push(det(add(P.box, 'pouch' + sx, [0, D.hipY, 0], [sx * 0.1 * w, 0.08, 0.105 * w], [0.045, 0.06, 0.03], blk)));
       }
       // arms
       for (const sd of ['L', 'R']) {
@@ -177,8 +225,14 @@
         add(P.sph, 'shoulder' + sd, z3, [0, -0.015, 0], [0.118 * w, 0.115 * w, 0.125 * w], sleeve);
         add(P.cyl, 'upper' + sd, z3, [0, -D.upper / 2, 0], [0.1 * w * (heavy ? 1.1 : 1), D.upper + 0.02, 0.105 * w * (heavy ? 1.1 : 1)], sleeve);
         add(P.cyl, 'fore' + sd, z3, [0, -D.fore / 2, 0], [0.083 * w, D.fore + 0.02, 0.088 * w], tank || tee ? skin : top);
-        add(P.box, 'hand' + sd, z3, [0, -0.08, 0.005], [0.07 * w, 0.15 * hs, 0.042], skin);
+        add(P.box, 'hand' + sd, z3, [0, -0.048, 0.005], [0.07 * w, 0.085 * hs, 0.044], skin);
+        add(P.box, 'fingers' + sd, z3, [0, -0.125, 0.006], [0.066 * w, 0.075 * hs, 0.036], shade(look.skin, 0.97));
+        det(add(P.box, 'thumb' + sd, z3, [sd === 'L' ? 0.026 : -0.026, -0.06, 0.03], [0.022, 0.06, 0.022], skin));
+        if (look.cop) det(add(P.box, 'patch' + sd, z3, [sd === 'L' ? -0.052 : 0.052, -0.075, 0], [0.012, 0.075, 0.06], [0.75, 0.62, 0.2]));
       }
+      if (look.watch) det(add(P.box, 'watch', z3, [0, -D.fore + 0.03, 0], [0.09 * w, 0.03, 0.095 * w], look.cop ? [0.1, 0.1, 0.1] : [0.2, 0.17, 0.12]));
+      this.parts.phone = add(P.box, 'phone', z3, [0, -0.1, 0.03], [0.045, 0.085, 0.01], [0.08, 0.08, 0.1]); this.parts.phone.base = false;
+      if (look.cop) { this.parts.taser = add(P.box, 'taser', z3, [0, -0.12, 0.045], [0.035, 0.05, 0.12], [0.95, 0.82, 0.1]); this.parts.taser.base = false; }
       // neck and head (all head parts hang from the neck top and turn together)
       add(P.cyl, 'neck', [0, D.shY, 0], [0, 0.05 * hs, 0], [0.105 * w * (heavy ? 1.15 : 1), 0.12 * hs, 0.11 * w * (heavy ? 1.15 : 1)], skin);
       const nk = [0, D.neckY, 0], hc = D.headC, fz = HS[2] / 2;
@@ -194,7 +248,20 @@
         H(P.box, [sx * HS[0] / 2, 0, -0.005], [0.024, 0.055 * hh, 0.04], shade(look.skin, 0.96)); // ear
       }
       H(P.box, [0, -0.012, fz], [0.032, 0.05, 0.036], shade(look.skin, 0.95)); // nose
-      H(P.box, [0, -0.058 * hh, fz - 0.018], [0.055, 0.012, 0.012], mixc(skin, [0.55, 0.2, 0.2], 0.45)); // mouth
+      for (const sx of [-1, 1]) det(H(P.box, [sx * 0.009, -0.034, fz + 0.012], [0.008, 0.006, 0.006], shade(look.skin, 0.55))); // nostrils
+      // mouth: dark inside, teeth and two lips that part when shouting or out of breath
+      const lip = mixc(skin, [0.52, 0.27, 0.24], 0.3), my = -0.058 * hh;
+      this.mouth = det(H(P.box, [0, my, fz - 0.024], [0.042, 0.004, 0.006], [0.18, 0.05, 0.06]));
+      this.teeth = det(H(P.box, [0, my + 0.004, fz - 0.021], [0.034, 0.008, 0.005], [0.95, 0.94, 0.9])); this.teeth.base = false;
+      this.lipU = H(P.box, [0, my + 0.005, fz - 0.017], [0.052, 0.01, 0.016], lip);
+      this.lipL = H(P.box, [0, my - 0.006, fz - 0.019], [0.046, 0.011, 0.016], shade(look.skin, 0.8));
+      // eyelids (blink) and a catch-light in each eye
+      this.lids = [];
+      this.brows = this.headParts.filter((q, i) => i >= 2 && i < 10 && (i - 2) % 4 === 2);
+      for (const sx of [-1, 1]) {
+        this.lids.push(det(H(P.box, [sx * eyeX, eyeY + 0.014, fz - 0.009], [0.045, 0.008, 0.016], shade(look.skin, 0.93))));
+        det(H(P.box, [sx * eyeX + 0.004, eyeY + 0.004, fz - 0.0015], [0.006, 0.006, 0.004], [1, 1, 1]));
+      }
       // facial hair
       if (look.facial === 'stubble') H(P.box, [0, -0.083 * hh, 0.037], [0.136 * hh, 0.08, 0.125 * hh], mixc(skin, hairC, 0.42));
       if (look.facial === 'beard') H(P.box, [0, -0.088 * hh, 0.038], [0.148 * hh, 0.1, 0.132 * hh], hairC);
@@ -227,6 +294,16 @@
           break;
         default: break; // bald
       }
+      // fringe, sideburns, earrings, headphones
+      if (!capped && ['short', 'curly', 'long', 'ponytail', 'bun'].includes(look.hair)) {
+        H(P.box, [f ? 0.018 : 0, 0.083 * hh, fz - 0.03], [HS[0] * (f ? 0.78 : 0.7), 0.032, 0.04], hairC, [0, -0.25, f ? -0.12 : 0]);
+      }
+      if (!f && ['short', 'buzz', 'curly'].includes(look.hair)) for (const sx of [-1, 1]) det(H(P.box, [sx * HS[0] * 0.47, 0.005, 0.03], [0.014, 0.05, 0.03], hairC));
+      if (look.earrings) for (const sx of [-1, 1]) det(H(P.box, [sx * HS[0] * 0.5, -0.04 * hh, 0.0], [0.012, 0.022, 0.012], [1, 0.84, 0.25]));
+      if (look.phones && !capped) {
+        H(P.box, [0, 0.135 * hh, 0], [HS[0] * 1.1, 0.025, 0.035], [0.1, 0.1, 0.12]);
+        for (const sx of [-1, 1]) H(P.cyl, [sx * HS[0] * 0.53, 0.0, 0], [0.065, 0.035, 0.065], [0.12, 0.12, 0.14], [0, 0, Math.PI / 2]);
+      }
       // hats
       if (hat === 'cap') {
         H(P.sph, [0, 0.31 * HS[1], -0.005], [HS[0] * 1.12, HS[1] * 0.56, HS[2] * 1.12], hatC);
@@ -239,6 +316,8 @@
         H(P.cyl, [0, 0.3 * HS[1], 0], [HS[0] * 1.12, 0.035, HS[2] * 1.12], [0.92, 0.92, 0.92]);
         H(P.box, [0, 0.24 * HS[1], fz + 0.04], [0.16 * hh, 0.014, 0.09], [0.04, 0.04, 0.04], [0, -0.1, 0]);
         H(P.box, [0, 0.42 * HS[1], HS[2] * 0.58], [0.035, 0.04, 0.01], [0.95, 0.76, 0.18]);
+        // the checkered (Sillitoe) band of Chicago police caps
+        for (let k = -2; k <= 2; k++) det(H(P.box, [k * 0.032, 0.3 * HS[1], HS[2] * 0.565], [0.016, 0.017, 0.006], [0.05, 0.05, 0.05]));
       }
       if (this.weapons) { this.weapons = null; this.addWeapons(); }
       this.pose3d();
@@ -358,6 +437,32 @@
           else if (w === 'pistol') { upR = -0.2 + upR * 0.4; elR = -0.5; rlR = 0.1; }
         }
       }
+      // expressions and hands
+      let mouth = 0, brow = 0, fistL = 0.15, fistR = 0.15;
+      switch (pose) {
+        case 'cheer': mouth = 0.85; brow = 0.6; fistL = fistR = 0.9; break;
+        case 'cower': case 'handsup': mouth = 0.5; brow = 1; fistL = fistR = 0; break;
+        case 'air': case 'fallen': mouth = 0.7; brow = 0.9; break;
+        case 'swing': case 'shove': case 'kick': case 'raise': case 'grab': mouth = 0.55; brow = -0.6; fistL = fistR = 1; break;
+        case 'aim': brow = -0.5; fistL = 0.8; fistR = 1; break;
+        case 'taser': brow = -0.4; fistR = 1; break;
+        case 'phone': mouth = 0.18 + 0.22 * Math.abs(Math.sin(this.t * 13)); fistR = 0.6; brow = 0.4; break;
+        case 'eat': mouth = 0.3 + 0.3 * Math.abs(Math.sin(this.t * 8)); break;
+        case 'lie': case 'sit': mouth = 0; break;
+        default: if (speed > 5.5) mouth = 0.32;
+      }
+      if (w === 'bat' || w === 'crowbar' || w === 'pistol') fistR = 1;
+      if (this.fear) { brow = 1; mouth = Math.max(mouth, 0.4); }
+      if (this.lookAt != null && pose !== 'fallen' && pose !== 'lie' && pose !== 'swim') { hy = M.clamp(this.lookAt, -1.15, 1.15); hp = Math.min(hp, 0.05); }
+      // blink every few seconds
+      this.blinkT -= dt;
+      if (this.blinkT <= 0) { this.blinkT = 1.8 + Math.random() * 4; this.blinkOn = 0.13; }
+      if (this.blinkOn > 0) this.blinkOn -= dt;
+      const e = this.ex, ke = Math.min(1, dt * 12);
+      e.blink = this.blinkOn > 0 || pose === 'lie' ? 1 : Math.max(0, e.blink - dt * 14);
+      e.mouth += (mouth - e.mouth) * ke; e.brow += (brow - e.brow) * ke;
+      e.fistL += (fistL - e.fistL) * ke; e.fistR += (fistR - e.fistR) * ke;
+      this.pose = pose;
       const k = snap ? Math.min(1, dt * 40) : Math.min(1, dt * 14);
       const ease = (n, v) => { a[n] += (v - a[n]) * k; };
       ease('thL', thL); ease('thR', thR); ease('knL', knL); ease('knR', knR);
@@ -395,6 +500,33 @@
         frm.jx = j.el[0]; frm.jy = j.el[1]; frm.jz = j.el[2]; frm.yaw = tw; frm.pitch = up + el; frm.roll = rl + er;
         hnd.jx = j.wr[0]; hnd.jy = j.wr[1]; hnd.jz = j.wr[2]; hnd.yaw = tw; hnd.pitch = up + el; hnd.roll = rl + er;
         if (sd === 'R' && this.weaponParts) for (const p of this.weaponParts) { p.jx = j.wr[0]; p.jy = j.wr[1]; p.jz = j.wr[2]; p.yaw = tw; p.pitch = up + el; p.roll = rl + er; }
+        // hand details: fingers (curl into a fist), thumb, things held
+        const fist = this.ex['fist' + sd];
+        const att = (q) => { if (!q) return; q.jx = j.wr[0]; q.jy = j.wr[1]; q.jz = j.wr[2]; q.yaw = tw; q.pitch = up + el; q.roll = rl + er; };
+        const fng = P['fingers' + sd];
+        att(fng); att(P['thumb' + sd]);
+        fng.sy = fng.sy0 * (1 - 0.45 * fist); fng.oy = D.palmEnd - fng.sy / 2 + 0.003; fng.oz = 0.006 + 0.014 * fist; fng.sz = 0.036 + 0.012 * fist;
+        if (sd === 'R') { att(P.phone); att(P.taser); }
+        // things on the forearm / upper arm / feet / shins
+        if (sd === 'L' && P.watch) { const q = P.watch; q.jx = j.el[0]; q.jy = j.el[1]; q.jz = j.el[2]; q.yaw = tw; q.pitch = up + el; q.roll = rl + er; }
+        const pt = P['patch' + sd]; if (pt) { pt.jx = j.sh[0]; pt.jy = j.sh[1]; pt.jz = j.sh[2]; pt.yaw = tw; pt.pitch = up; pt.roll = rl; }
+        for (const n of ['sole', 'lace']) { const q = P[n + sd]; if (q) { q.jx = j.ankle[0]; q.jy = j.ankle[1]; q.jz = j.ankle[2]; q.yaw = ptw; q.pitch = sho.pitch; } }
+        const sk = P['sock' + sd]; if (sk) { sk.jx = j.knee[0]; sk.jy = j.knee[1]; sk.jz = j.knee[2]; sk.yaw = ptw; sk.pitch = th + kn; }
+      }
+      for (const q of this.torsoX) q.yaw = tw;
+      for (const q of this.pelvisX) q.yaw = ptw;
+      // held items only in their poses
+      if (P.phone) { P.phone.base = this.pose === 'phone'; P.phone.vis = P.phone.base; }
+      if (P.taser) { P.taser.base = this.pose === 'taser'; P.taser.vis = P.taser.base; }
+      // face: blink, mouth, brows
+      const ex = this.ex;
+      if (this.lids) for (const q of this.lids) { q.sy = q.sy0 + (0.03 - q.sy0) * ex.blink; q.oy = q.oy0 - 0.01 * ex.blink; }
+      if (this.lipU) {
+        const m = ex.mouth;
+        this.lipU.oy = this.lipU.oy0 + 0.003 * m; this.lipL.oy = this.lipL.oy0 - 0.017 * m;
+        this.mouth.sy = 0.004 + 0.024 * m; this.mouth.oy = this.mouth.oy0 - 0.006 * m;
+        this.teeth.base = m > 0.25; this.teeth.vis = this.teeth.base && this.near;
+        for (const q of this.brows) q.oy = q.oy0 + 0.007 * ex.brow;
       }
       // torso twist (hips turn the other way a little)
       P.pelvis.yaw = ptw;
@@ -404,6 +536,10 @@
     }
     place(x, y, z, yaw, pitch, lean) {
       const r = this.rig;
+      if (CB.camX !== undefined) {
+        const near = (x - CB.camX) * (x - CB.camX) + (z - CB.camZ) * (z - CB.camZ) < 26 * 26;
+        if (near !== this.near) { this.near = near; for (const q of this.detail) q.vis = near && q.base; }
+      }
       r.x = x; r.y = y + this.bob; r.z = z; r.yaw = yaw;
       r.pitch = (pitch || 0) + (lean || 0);
       r.update();
@@ -557,6 +693,14 @@
       if (this.mode === 'walk' || this.mode === 'flee') {
         const gy = City.groundY(this.x, this.z);
         this.y += (gy - this.y) * Math.min(1, dt * 15);
+      }
+      // react: scared faces, and people glance at the player walking past
+      const h = this.h, G = CB.game, pl = G && G.player;
+      h.fear = this.mode === 'flee' || this.mode === 'cower' || this.mode === 'held' || this.mode === 'phone';
+      h.lookAt = null;
+      if (pl && !pl.inCar && (this.mode === 'walk' || this.mode === 'idle' || this.mode === 'held')) {
+        const dx = pl.x - this.x, dz = pl.z - this.z, d2 = dx * dx + dz * dz;
+        if (d2 < 42 && d2 > 0.2) { const rel = M.wrap(Math.atan2(dx, dz) - this.yaw); if (Math.abs(rel) < 1.9) h.lookAt = rel; }
       }
       const lean = this.h.animate(dt, speed, pose);
       const pitch = this.mode === 'fallen' ? -Math.PI / 2 : this.mode === 'knock' ? this.pitch : 0;

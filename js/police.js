@@ -27,6 +27,7 @@
     wanted: 0, mode: 'calm', lastX: 0, lastZ: 0, lastSeen: 0, searchT: 0, alertT: 0,
     alertX: 0, alertZ: 0, reports: [], foot: [], cars: [], heli: null,
     bust: 0, recog: 0, anySees: false, popT: 0, time: 0,
+    lastVX: 0, lastVZ: 0, roleT: 0, spots: null, roadblock: null, rbT: 20, radioT: 0, lastHeading: '',
     get level() { return Math.min(5, Math.ceil(this.wanted / 100 - 1e-6)); },
   };
 
@@ -34,7 +35,8 @@
     for (const c of this.foot) c.h.dispose();
     for (const c of this.cars) c.dispose();
     if (this.heli) this.heli.rig.dispose();
-    Object.assign(this, { wanted: 0, mode: 'calm', reports: [], foot: [], cars: [], heli: null, bust: 0, recog: 0, anySees: false, popT: 0, time: 0, searchT: 0, alertT: 0 });
+    Object.assign(this, { wanted: 0, mode: 'calm', reports: [], foot: [], cars: [], heli: null, bust: 0, recog: 0, anySees: false, popT: 0, time: 0, searchT: 0, alertT: 0,
+      lastVX: 0, lastVZ: 0, roleT: 0, spots: null, roadblock: null, rbT: 20, radioT: 0, lastHeading: '' });
     this.flow = null;
     if (this.spot) this.spot.intensity = 0;
   };
@@ -81,7 +83,7 @@
       const c = Police.foot[i];
       const d = M.dist(c.x, c.z, pl.x, pl.z);
       if ((d > 230 && !c.sees) || (Police.foot.length > FOOT_TARGET[lvl] + 3 && d > 150)) {
-        if (chasing && Police.foot.length <= FOOT_TARGET[lvl] + 3) { CB.Peds.place(c, pl.x, pl.z, minD, maxD, pl.viewYaw); c.state = 'patrol'; }
+        if (chasing && Police.foot.length <= FOOT_TARGET[lvl] + 3) { CB.Peds.place(c, pl.x, pl.z, minD, maxD, pl.viewYaw); c.state = 'patrol'; c.post = null; c.spot = null; }
         else { c.h.dispose(); Police.foot.splice(i, 1); }
       }
     }
@@ -212,6 +214,106 @@
     return CB.nodePos(ni, nj);
   }
 
+  // ------------------------------------------------------------------ what the police know
+  // The suspect's velocity when last seen: where they are probably heading now.
+  function suspectVel(pl) {
+    if (pl.inCar && pl.car) return { x: pl.car.vx || 0, z: pl.car.vz || 0 };
+    return { x: pl.vx || 0, z: pl.vz || 0 };
+  }
+  Police.predict = function () {
+    const t = Math.min(this.time - this.lastSeen, 5) * 0.85;
+    let x = this.lastX + this.lastVX * t, z = this.lastZ + this.lastVZ * t;
+    for (let k = 0; k < 6 && !CB.City.walkable(x, z); k++) { x = M.lerp(x, this.lastX, 0.35); z = M.lerp(z, this.lastZ, 0.35); }
+    return { x, z };
+  };
+  function heading(vx, vz) {
+    if (Math.hypot(vx, vz) < 1.2) return '';
+    const a = Math.atan2(vx, vz); // 0 = north (+z), PI/2 = east (+x, the lake)
+    return ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'][((Math.round(a / (Math.PI / 4)) % 8) + 8) % 8];
+  }
+  // Police radio chatter in the HUD (rate-limited).
+  Police.radio = function (title, text, force) {
+    if (!force && this.time < this.radioT) return;
+    this.radioT = this.time + 9;
+    CB.HUD.notify('📻 ' + title, text || '', 'yellow');
+    CB.Audio.play('beepHi', 0.35);
+  };
+  // Loud noises (gunshots, explosions, crashes) give away where you are.
+  Police.hear = function (x, z, r, game, what) {
+    if (what === 'crash' && this.mode !== 'chase' && this.mode !== 'search') return false; // accidents aren't crimes
+    let heard = false;
+    for (const c of this.foot) if (c.mode !== 'fallen' && c.mode !== 'knock' && M.dist2(c.x, c.z, x, z) < r * r) { heard = true; break; }
+    if (!heard) for (const c of this.cars) if (c.occupied && M.dist2(c.x, c.z, x, z) < r * r * 1.4) { heard = true; break; }
+    if (!heard) return false;
+    if (this.mode === 'chase' || this.mode === 'search') {
+      const wasSearch = this.mode === 'search';
+      this.lastX = x; this.lastZ = z; this.lastSeen = this.time; this.lastVX = this.lastVZ = 0; this.spots = null;
+      this.mode = 'chase';
+      if (wasSearch) this.radio(what === 'crash' ? 'They heard the crash!' : what === 'boom' ? 'Explosion!' : 'Shots fired!', 'They heard you – units converging on the noise.', true);
+    } else {
+      this.mode = 'alert'; this.alertX = x; this.alertZ = z; this.alertT = 25;
+      const units = this.foot.slice().sort((a, b) => M.dist2(a.x, a.z, x, z) - M.dist2(b.x, b.z, x, z));
+      units.slice(0, 3 + this.level).forEach((u) => { u.state = 'investigate'; });
+      this.radio(what === 'boom' ? 'Explosion reported' : 'Shots fired', 'Units responding to the noise.', true);
+    }
+    return true;
+  };
+
+  // Roadblock: two cruisers parked across the road ahead of a fleeing car, officers behind them.
+  function makeRoadblock(pl) {
+    const car = pl.car, sp = Math.hypot(car.vx, car.vz);
+    const alongX = Math.abs(car.vx) > Math.abs(car.vz), dir = Math.sign(alongX ? car.vx : car.vz) || 1;
+    // the road the car is on, and the intersection 2-3 blocks ahead
+    const roadI = Math.round(((alongX ? car.z : car.x) + C.HALF) / C.P);
+    const ahead = (alongX ? car.x : car.z) + dir * M.clamp(sp * 6, 140, 210);
+    const nodeI = Math.round((ahead + C.HALF) / C.P);
+    if (nodeI < 0 || nodeI > C.N || roadI < 0 || roadI > C.N) return null;
+    const along = CB.road(nodeI), across = CB.road(roadI);
+    if (Math.abs((alongX ? car.z : car.x) - across) > 8) return null; // not on a straight road
+    const px = alongX ? along - dir * 13 : across, pz = alongX ? across : along - dir * 13;
+    if (CB.City.inRiver(px, pz) || CB.City.inRiver(alongX ? along : across, alongX ? across : along)) return null;
+    const rb = { x: px, z: pz, cars: [], cops: [], t: 0 };
+    for (const s of [-1, 1]) {
+      const c = new CB.Car('police');
+      c.isPolice = true; c.officers = 0; c.setDriver(false);
+      c.mode = 'roadblock'; c.siren = true; c.health = 100;
+      c.x = alongX ? px : px + s * 3.3; c.z = alongX ? pz + s * 3.3 : pz;
+      c.h = (alongX ? 0 : Math.PI / 2) + s * 0.25; c.y = CB.City.groundY(c.x, c.z); c.vx = c.vz = 0; c.vf = 0;
+      c.stuckT = 0; c.revT = 0; c.deployT = 0; c.seeT = 0;
+      Police.cars.push(c); rb.cars.push(c);
+      // an officer behind each cruiser, facing the oncoming car
+      const o = new Cop();
+      o.x = alongX ? px + dir * 4 : px + s * 3.6; o.z = alongX ? pz + s * 3.6 : pz + dir * 4; o.y = CB.City.groundY(o.x, o.z);
+      o.yaw = alongX ? (dir > 0 ? -Math.PI / 2 : Math.PI / 2) : (dir > 0 ? Math.PI : 0); o.reroute();
+      o.post = { x: o.x, z: o.z, yaw: o.yaw }; o.mode = 'idle';
+      Police.foot.push(o); rb.cops.push(o);
+    }
+    return rb;
+  }
+  function updateRoadblock(dt, pl, chasing) {
+    const P = Police, rb = P.roadblock;
+    P.rbT -= dt;
+    if (rb) {
+      rb.t += dt;
+      const d = M.dist(rb.x, rb.z, pl.x, pl.z);
+      if (!chasing || rb.t > 70 || d > 330) {
+        // stand down: officers leave their posts, the cruisers rejoin traffic
+        for (const o of rb.cops) o.post = null;
+        for (const c of rb.cars) if (c.mode === 'roadblock') { c.mode = 'ai'; c.setDriver(true); c.officers = 1; }
+        P.roadblock = null;
+      }
+      return;
+    }
+    if (P.level >= 3 && P.mode === 'chase' && pl.inCar && pl.car && pl.car.speed > 9 && P.rbT <= 0 && P.time - P.lastSeen < 2) {
+      P.rbT = 8; // try again soon if the road ahead was unsuitable
+      const r = makeRoadblock(pl);
+      if (r) {
+        P.roadblock = r; P.rbT = 35;
+        P.radio('ROADBLOCK AHEAD!', 'Cruisers are blocking the road – find another way or ram through.', true);
+      }
+    }
+  }
+
   // ------------------------------------------------------------------ crimes & reports
   // sev: heat percent added. Returns whether police saw it directly.
   Police.crime = function (x, z, opts, game) {
@@ -239,9 +341,14 @@
     this.mode = 'chase';
     this.lastX = pl.x; this.lastZ = pl.z; this.lastSeen = this.time;
     this.recog = 0;
+    const v = suspectVel(pl);
+    this.lastVX = v.x; this.lastVZ = v.z;
     if (was !== 'chase') {
       if (was !== 'search') CB.HUD.notify('🚨 COPS ARE ON YOU!', 'Break line of sight to lose them.', 'red');
       CB.Audio.play('beepHi', 0.6);
+      this.spots = null;
+      const hd = heading(v.x, v.z);
+      this.radioT = this.time + 2.5; this.lastHeading = hd;
     }
   };
 
@@ -379,11 +486,24 @@
 
     // ---- mode transitions
     if (chasing) {
-      if (sees) { this.lastX = pl.x; this.lastZ = pl.z; this.lastSeen = this.time; if (this.mode === 'search') { this.mode = 'chase'; CB.HUD.notify('👀 Spotted again!', '', 'red'); } }
+      if (sees) {
+        this.lastX = pl.x; this.lastZ = pl.z; this.lastSeen = this.time;
+        const v = suspectVel(pl), k = Math.min(1, dt * 4);
+        this.lastVX += (v.x - this.lastVX) * k; this.lastVZ += (v.z - this.lastVZ) * k;
+        if (this.mode === 'search') { this.mode = 'chase'; this.spots = null; CB.HUD.notify('👀 Spotted again!', '', 'red'); }
+        // radio: where the suspect is heading
+        const hd = heading(this.lastVX, this.lastVZ);
+        if (hd && hd !== this.lastHeading && this.time >= this.radioT) {
+          this.lastHeading = hd;
+          this.radio('Suspect ' + (pl.inCar ? 'in a car' : 'on foot') + ', heading ' + hd, lvl >= 3 && pl.inCar ? 'Units cutting them off ahead.' : 'All units converge.');
+        }
+      }
       if (this.mode === 'chase' && this.time - this.lastSeen > 3 + lvl * 0.7) {
-        this.mode = 'search'; this.searchT = 10 + lvl * 4;
-        CB.HUD.notify('🔦 Police lost sight of you', 'Stay hidden until the search ends.', 'yellow');
-        for (const c of this.foot) { c.wanderT = 0; c.checked = null; }
+        this.mode = 'search'; this.searchT = 12 + lvl * 4;
+        const hd = heading(this.lastVX, this.lastVZ);
+        CB.HUD.notify('🔦 Police lost sight of you', hd ? 'They think you went ' + hd + ' – and they will check hiding spots.' : 'Stay hidden until the search ends.', 'yellow');
+        for (const c of this.foot) { c.wanderT = 0; c.checked = null; c.spot = null; }
+        this.spots = null;
       }
       if (this.mode === 'search') {
         this.searchT -= dt;
@@ -403,15 +523,41 @@
     const nowChasing = this.mode === 'chase' || this.mode === 'search';
 
     // ---- flow field toward the point officers care about
+    let pred = null;
+    if (nowChasing) pred = this.time - this.lastSeen < 0.3 ? { x: this.lastX, z: this.lastZ } : this.predict();
     if (nowChasing || this.mode === 'alert') {
-      const tx = this.mode === 'alert' ? this.alertX : this.lastX, tz = this.mode === 'alert' ? this.alertZ : this.lastZ;
+      const tx = this.mode === 'alert' ? this.alertX : pred.x, tz = this.mode === 'alert' ? this.alertZ : pred.z;
       const f = this.flow;
       this.flowT = (this.flowT || 0) - dt;
       if (!f || (this.flowT <= 0 && M.dist(f.tx, f.tz, tx, tz) > 3)) { computeFlow(tx, tz); this.flowT = 0.4; }
     }
 
     // ---- foot officers
+    // Roles while chasing: the two closest run at the suspect, one runs ahead to cut them
+    // off, the rest fan out to the sides so the escape routes close.
+    this.roleT -= dt;
+    if (this.roleT <= 0 && nowChasing) {
+      this.roleT = 0.5;
+      const act = this.foot.filter((c) => !c.post && c.mode !== 'knock' && c.mode !== 'fallen' && c.mode !== 'held')
+        .sort((a, b) => M.dist2(a.x, a.z, pl.x, pl.z) - M.dist2(b.x, b.z, pl.x, pl.z));
+      const ha = Math.atan2(this.lastVX, this.lastVZ);
+      act.forEach((c, i) => {
+        c.role = i < 2 ? 'chase' : i === 2 ? 'cut' : 'flank';
+        if (c.role === 'flank') c.flankA = ha + (i % 2 ? 1 : -1) * (Math.PI / 2 + (i >> 1) * 0.5);
+      });
+    }
+    // search: hiding spots (dumpsters, bushes) near where they think you went, checked one by one
+    if (this.mode === 'search' && !this.spots) {
+      const pc = pred || { x: this.lastX, z: this.lastZ };
+      this.spots = [];
+      for (const d of CB.City.dumpsters) if (M.dist2(d.x, d.z, pc.x, pc.z) < 55 * 55) this.spots.push({ x: d.x, z: d.z, kind: 'dumpster', ref: d });
+      for (const b of CB.City.covers) if (M.dist2(b.x, b.z, pc.x, pc.z) < 45 * 45) this.spots.push({ x: b.x, z: b.z, kind: 'bush', ref: b });
+      this.spots.sort((a, b) => M.dist2(a.x, a.z, pc.x, pc.z) - M.dist2(b.x, b.z, pc.x, pc.z));
+      this.spots = this.spots.slice(0, 10);
+    }
     const run = RUN[lvl];
+    const armed = pl.weapon === 'pistol' && !pl.inCar;
+    const pv = suspectVel(pl);
     let near = 0;
     for (const c of this.foot) {
       if (c.mode === 'knock' || c.mode === 'fallen' || c.mode === 'held') {
@@ -421,37 +567,86 @@
       }
       const dPl = M.dist(c.x, c.z, pl.x, pl.z);
       let goal = null, spd = 0, pose = 'walk';
-      if (nowChasing) {
+      if (c.post && !(nowChasing && c.sees && dPl < 30 && !pl.inCar)) {
+        // manning a roadblock: hold position, taser ready
+        goal = { x: c.post.x, z: c.post.z }; spd = M.dist(c.x, c.z, c.post.x, c.post.z) > 0.4 ? 2.5 : 0;
+        if (spd === 0) { c.yaw = M.turn(c.yaw, c.sees ? Math.atan2(pl.x - c.x, pl.z - c.z) : c.post.yaw, dt * 4); pose = 'taser'; }
+      } else if (nowChasing) {
         if (c.sees && !pl.hidden) {
-          // run straight at the player (lead a moving car a bit)
-          goal = { x: pl.x + (pl.vx || 0) * 0.3, z: pl.z + (pl.vz || 0) * 0.3 };
+          // where to run: at the suspect (with a lead), ahead of them, or out to the side
+          let gx = pl.x + pv.x * 0.4, gz = pl.z + pv.z * 0.4;
+          const fast = Math.hypot(pv.x, pv.z) > 1.5;
+          if (c.role === 'cut' && fast && dPl > 4) {
+            const cx = pl.x + pv.x * 2.2, cz = pl.z + pv.z * 2.2;
+            if (CB.City.walkable(cx, cz) && M.dist(c.x, c.z, cx, cz) < M.dist(pl.x, pl.z, cx, cz) * 2.5) { gx = cx; gz = cz; }
+          } else if (c.role === 'flank' && dPl > 5) {
+            const fx = pl.x + Math.sin(c.flankA) * 6, fz = pl.z + Math.cos(c.flankA) * 6;
+            if (CB.City.walkable(fx, fz)) { gx = fx; gz = fz; }
+          }
           spd = dPl < 2.5 ? Math.min(run, dPl * 2) : run;
-          if (lvl >= 4 && dPl > 3 && dPl < 14 && !pl.inCar) {
+          // an armed suspect: zig-zag in, and keep some distance at low wanted levels
+          if (armed && dPl < 30) {
+            const ax = -(pl.z - c.z) / (dPl || 1), az = (pl.x - c.x) / (dPl || 1), zz = Math.sin(this.time * 3.2 + c.x) * 3.5;
+            gx += ax * zz; gz += az * zz;
+            if (pl.aiming && dPl < 8 && lvl < 3) spd = 0.6;
+          }
+          goal = { x: gx, z: gz };
+          // blocked straight line: follow the flow field instead
+          if (!CB.City.los(c.x, c.z, gx, gz)) { const fd = flowDir(c.x, c.z); if (fd) goal = { x: c.x + fd.x * 3, z: c.z + fd.z * 3 }; }
+          if ((lvl >= 4 || (armed && lvl >= 3)) && dPl > 3 && dPl < 14 && !pl.inCar) {
             c.taserT -= dt;
             if (c.taserT <= 0) { c.taserT = M.rand(2.2, 3.8); fireTaser(c, pl, game); c.poseT = 0.4; }
           }
-        } else if (this.mode === 'search' && M.dist(c.x, c.z, this.lastX, this.lastZ) < 14) {
-          // poke around the last known position
-          c.wanderT -= dt;
-          if (c.wanderT <= 0 || M.dist(c.x, c.z, c.wx, c.wz) < 1.2) {
-            for (let k = 0; k < 8; k++) {
-              const a = Math.random() * 6.28, r = M.rand(5, 30);
-              const wx = this.lastX + Math.cos(a) * r, wz = this.lastZ + Math.sin(a) * r;
-              if (CB.City.walkable(wx, wz)) { c.wx = wx; c.wz = wz; break; }
+        } else if (this.mode === 'search') {
+          // go and check the nearest unchecked hiding spot; otherwise sweep around the predicted spot
+          if (c.spot && c.spot.checked) c.spot = null;
+          if (!c.spot && this.spots) {
+            let best = null, bd = 1e9;
+            for (const sp of this.spots) {
+              if (sp.checked) continue;
+              const d = M.dist(c.x, c.z, sp.x, sp.z), o = sp.claimed;
+              if (d > 70) continue; // units far away keep sweeping instead
+              // a spot someone else is on: only take it over if we're clearly closer
+              if (o && o !== c && o.spot === sp && M.dist(o.x, o.z, sp.x, sp.z) < d + 12) continue;
+              if (d < bd) { bd = d; best = sp; }
             }
-            c.wanderT = M.rand(3, 6);
+            if (best) { if (best.claimed && best.claimed !== c && best.claimed.spot === best) best.claimed.spot = null; c.spot = best; best.claimed = c; c.checkT = 0; c.spotT = 0; }
           }
-          goal = { x: c.wx, z: c.wz }; spd = run * 0.55;
+          if (c.spot) {
+            const sp = c.spot, d = M.dist(c.x, c.z, sp.x, sp.z);
+            c.spotT += dt;
+            if (d > 2.2) { goal = { x: sp.x, z: sp.z }; spd = run * 0.75; if (!CB.City.los(c.x, c.z, sp.x, sp.z)) { const fd = flowDir(c.x, c.z); if (fd) goal = { x: c.x + fd.x * 3, z: c.z + fd.z * 3 }; } }
+            else {
+              c.checkT += dt; pose = 'grab'; c.yaw = M.turn(c.yaw, Math.atan2(sp.x - c.x, sp.z - c.z), dt * 8);
+              if (c.checkT > 1.1) {
+                sp.checked = true;
+                if (sp.kind === 'dumpster' && pl.hidden && pl.hideSpot === sp.ref) {
+                  if (game.hideSeen || Math.random() < 0.3 + 0.08 * lvl) game.foundHiding(c);
+                  else CB.HUD.notify('😅 A cop checked your dumpster…', 'and walked on.', 'yellow');
+                } else if (sp.kind === 'bush' && pl.inCover && M.dist(pl.x, pl.z, sp.x, sp.z) < 3.2) {
+                  this.startChase(pl, game); CB.HUD.notify('🌳 They searched your bush!', 'Run!', 'red');
+                }
+              }
+            }
+            if (c.spotT > 14) { sp.checked = true; c.spot = null; } // couldn't get there
+          } else {
+            const pc = pred || { x: this.lastX, z: this.lastZ };
+            c.wanderT -= dt;
+            if (c.wanderT <= 0 || M.dist(c.x, c.z, c.wx, c.wz) < 1.2) {
+              for (let k = 0; k < 8; k++) {
+                const a = Math.random() * 6.28, r = M.rand(5, 30);
+                const wx = pc.x + Math.cos(a) * r, wz = pc.z + Math.sin(a) * r;
+                if (CB.City.walkable(wx, wz)) { c.wx = wx; c.wz = wz; break; }
+              }
+              c.wanderT = M.rand(3, 6);
+            }
+            if (M.dist(c.x, c.z, pc.x, pc.z) > 32) { const fd = flowDir(c.x, c.z); goal = fd ? { x: c.x + fd.x * 3, z: c.z + fd.z * 3 } : { x: c.wx, z: c.wz }; spd = run * 0.8; }
+            else { goal = { x: c.wx, z: c.wz }; spd = run * 0.55; }
+          }
         } else {
           const fd = flowDir(c.x, c.z);
           if (fd) goal = { x: c.x + fd.x * 3, z: c.z + fd.z * 3 };
-          spd = this.mode === 'search' ? run * 0.8 : run;
-        }
-        // check dumpsters while searching
-        if (this.mode === 'search' && pl.hidden && pl.hideSpot && c.checked !== pl.hideSpot && M.dist(c.x, c.z, pl.hideSpot.x, pl.hideSpot.z) < 3) {
-          c.checked = pl.hideSpot;
-          if (Math.random() < 0.3) { game.foundHiding(c); }
-          else CB.HUD.notify('😅 A cop checked your dumpster…', 'and walked on.', 'yellow');
+          spd = run;
         }
       } else if (this.mode === 'alert' && c.state === 'investigate') {
         const fd = flowDir(c.x, c.z);
@@ -460,18 +655,27 @@
       if (c.poseT > 0) { c.poseT -= dt; pose = 'taser'; }
       if (goal) {
         const dx = goal.x - c.x, dz = goal.z - c.z, d = Math.hypot(dx, dz);
-        if (d > 0.05) {
+        if (d > 0.05 && spd > 0) {
           const m = Math.min(d, spd * dt);
           c.x += dx / d * m; c.z += dz / d * m;
           c.yaw = M.turn(c.yaw, Math.atan2(dx, dz), dt * 9);
         }
+        // keep a little space between officers (no conga lines)
+        for (const o of this.foot) {
+          if (o === c || o.mode === 'fallen') continue;
+          const ox = c.x - o.x, oz = c.z - o.z, d2 = ox * ox + oz * oz;
+          if (d2 < 1.4 * 1.4 && d2 > 1e-4) { const dd = Math.sqrt(d2), push = (1.4 - dd) * 0.5 * Math.min(1, dt * 8); c.x += ox / dd * push; c.z += oz / dd * push; }
+        }
         const hit = CB.City.resolve(c, 0.35, c.y, 0.3);
         if (hit && spd > 0) {
           c.stuckT += dt;
-          if (c.stuckT > 1.5) { c.wanderT = 0; c.stuckT = 0; }
+          if (c.stuckT > 1.5) { c.wanderT = 0; c.stuckT = 0; if (c.spot) c.spotT += 4; }
         } else c.stuckT = 0;
         c.y = CB.City.groundY(c.x, c.z);
         if (c.sees && dPl < 6) c.yaw = M.turn(c.yaw, Math.atan2(pl.x - c.x, pl.z - c.z), dt * 10);
+        // officers keep their eyes on a suspect they can see
+        c.h.lookAt = c.sees && dPl < 25 ? M.wrap(Math.atan2(pl.x - c.x, pl.z - c.z) - c.yaw) : null;
+        c.h.fear = false;
         const lean = c.h.animate(dt, spd, pose);
         c.h.place(c.x, c.y, c.z, c.yaw, 0, lean);
       } else {
@@ -480,23 +684,58 @@
       // arrest range (on foot, or pulled out of a stopped car)
       if (nowChasing && !pl.hidden && ((!pl.inCar && dPl < 1.7) || (pl.inCar && pl.car && pl.car.speed < 2.5 && dPl < 3.2))) near++;
     }
+    if (!nowChasing) for (const c of this.foot) if (c.post) c.post = null;
 
     // ---- cruisers
+    // the two closest cruisers pursue; the others drive to the intersection ahead of a fleeing car
+    let interceptNode = null;
+    if (nowChasing && pl.inCar && pl.car && this.time - this.lastSeen < 3 && pl.car.speed > 6) {
+      const ax = pl.x + this.lastVX * 4, az = pl.z + this.lastVZ * 4;
+      const n = nearestNode(ax, az), np = CB.nodePos(n.i, n.j);
+      if (!CB.City.inRiver(np.x, np.z) || CB.City.onBridge(np.x, np.z)) interceptNode = np;
+    }
+    const active = this.cars.filter((c) => c !== pl.car && (c.mode === 'ai' || c.mode === 'traffic'))
+      .sort((a, b) => M.dist2(a.x, a.z, pl.x, pl.z) - M.dist2(b.x, b.z, pl.x, pl.z));
+    active.forEach((c, i) => { c.role = i < 2 ? 'pursue' : 'intercept'; c.slot = i; c.boxPt = null; });
+    // a stopped suspect car: each free side (front, back, left, right) gets the nearest cruiser
+    const boxed = nowChasing && pl.inCar && pl.car && pl.car.speed < 3 && this.time - this.lastSeen < 2 ? pl.car : null;
+    if (boxed) {
+      const hx = Math.sin(boxed.h), hz = Math.cos(boxed.h);
+      const pts = [[hx, hz, 6.2], [-hx, -hz, 6.2], [hz, -hx, 4.4], [-hz, hx, 4.4]]
+        .map(([ox, oz, r]) => ({ x: pl.x + ox * r, z: pl.z + oz * r }))
+        .filter((q) => CB.City.walkable(q.x, q.z) && (!CB.City.inRiver(q.x, q.z) || CB.City.onBridge(q.x, q.z)));
+      const cand = active.filter((c) => M.dist2(c.x, c.z, pl.x, pl.z) < 45 * 45);
+      for (const q of pts) {
+        let best = null, bd = 1e9;
+        for (const c of cand) if (!c.boxPt) { const d = M.dist2(c.x, c.z, q.x, q.z); if (d < bd) { bd = d; best = c; } }
+        if (best) best.boxPt = q;
+      }
+    }
     for (const car of this.cars) {
       if (car === pl.car || car.mode === 'abandoned') continue;
-      if (car.mode === 'parked') continue;
+      if (car.mode === 'parked' || car.mode === 'roadblock') continue;
       const dPl = M.dist(car.x, car.z, pl.x, pl.z);
       car.siren = nowChasing || (this.mode === 'alert' && car.assigned);
       if (nowChasing && dPl < 260) {
         // switch to physics driving
         if (car.mode === 'traffic') { car.mode = 'ai'; car.vf = car.v; }
-        let tx, tz, aggressive = lvl >= 4 && pl.inCar;
-        if (car.sees && dPl < 80) {
-          tx = pl.x + (pl.vx || 0) * (aggressive ? 0.6 : 0.3); tz = pl.z + (pl.vz || 0) * (aggressive ? 0.6 : 0.3);
+        let tx, tz, aggressive = lvl >= 4 && pl.inCar, waitHere = false;
+        if (car.boxPt) {
+          // the suspect's car has stopped: park across our side of it
+          tx = car.boxPt.x; tz = car.boxPt.z;
+          if (M.dist(car.x, car.z, tx, tz) < 2.6) waitHere = true;
+        } else if (car.sees && dPl < 80 && (car.role === 'pursue' || dPl < 30)) {
+          tx = pl.x + pv.x * (aggressive ? 0.6 : 0.3); tz = pl.z + pv.z * (aggressive ? 0.6 : 0.3);
+        } else if (car.role === 'intercept' && interceptNode && M.dist(car.x, car.z, pl.x, pl.z) > 25) {
+          // cut the suspect off at the intersection ahead, then wait there
+          const np = nextRoutePoint(car, interceptNode.x, interceptNode.z);
+          tx = np.x; tz = np.z;
+          if (M.dist(car.x, car.z, interceptNode.x, interceptNode.z) < 10) waitHere = true;
         } else {
-          const tgt = this.mode === 'search' && M.dist(car.x, car.z, this.lastX, this.lastZ) < 30
-            ? { x: this.lastX + Math.cos(this.time * 0.3 + car.x) * 40, z: this.lastZ + Math.sin(this.time * 0.3 + car.z) * 40 }
-            : { x: this.lastX, z: this.lastZ };
+          const pc = pred || { x: this.lastX, z: this.lastZ };
+          const tgt = this.mode === 'search' && M.dist(car.x, car.z, pc.x, pc.z) < 30
+            ? { x: pc.x + Math.cos(this.time * 0.3 + car.x) * 40, z: pc.z + Math.sin(this.time * 0.3 + car.z) * 40 }
+            : pc;
           const np = nextRoutePoint(car, tgt.x, tgt.z);
           tx = np.x; tz = np.z;
         }
@@ -510,24 +749,34 @@
         // close to an on-foot player: stop and let officers out
         if (!pl.inCar && car.sees && dist < 14) { thr = vf > 1 ? -1 : 0; }
         if (pl.inCar && !aggressive && car.sees && dist < 9) thr = Math.min(thr, 0.2);
+        if (car.boxPt && !waitHere) {
+          // ease in instead of ramming; back into a spot that's behind us
+          const want = Math.min(maxV, 2.5 + dist * 0.8);
+          if (Math.abs(ang) > 2.1 && dist < 14) { thr = vf < -want ? 0 : -0.8; steer = -M.clamp(M.wrap(ang - Math.PI) * 2, -1, 1); }
+          else if (vf > want) thr = -0.7;
+          else thr = Math.min(thr, 0.8);
+        }
+        if (waitHere) { thr = vf > 0.8 ? -1 : 0; steer = M.clamp(M.wrap(Math.atan2(pl.x - car.x, pl.z - car.z) - car.h) * 2, -1, 1); }
         // reverse out when stuck
-        if (car.revT > 0) { car.revT -= dt; thr = -1; steer = -steer; }
-        else if (thr > 0.5 && Math.abs(vf) < 1.2) { car.stuckT += dt; if (car.stuckT > 1.2) { car.revT = 1.1; car.stuckT = 0; } }
+        if (car.revT > 0) { car.revT -= dt; thr = car.revDir; steer = -steer; }
+        else if (Math.abs(thr) > 0.5 && Math.abs(vf) < 1.2 && !waitHere) { car.stuckT += dt; if (car.stuckT > 1.2) { car.revT = 1.1; car.revDir = thr > 0 ? -1 : 1; car.stuckT = 0; } }
         else car.stuckT = 0;
         car.drive(dt, thr, steer, hand);
         car.brakeLight = thr < 0;
         // deploy officers
         car.deployT -= dt;
-        if (!pl.inCar && dist < 25 && Math.abs(car.vf) < 3 && car.officers > 0 && car.deployT <= 0 && lvl >= 2) {
+        const boxedIn = car.boxPt && waitHere && dPl < 9;
+        if (((!pl.inCar && dist < 25) || boxedIn) && Math.abs(car.vf) < 3 && car.officers > 0 && car.deployT <= 0 && lvl >= 2) {
           const d = car.doorPos();
           const c = new Cop();
-          c.x = d.x; c.z = d.z; c.y = CB.City.groundY(d.x, d.z); c.yaw = car.h; c.sees = true; c.reroute();
+          c.x = d.x; c.z = d.z; c.y = CB.City.groundY(d.x, d.z); c.yaw = car.h; c.reroute();
+          c.sees = canSee(c.x, c.z, c.yaw, 40, 6.3, pl, game.night); c.seeT = 0.18; // look before they know
           this.foot.push(c);
           car.officers--; car.deployT = 3.5;
           CB.Audio.play('door', 0.8, d.x, d.z, 40);
           if (car.officers <= 0) { car.mode = 'abandoned'; car.setDriver(false); car.siren = true; car.vx = car.vz = 0; }
         }
-        if (pl.inCar && pl.car && dist < 5 && pl.car.speed < 2.5) near++;
+        if (pl.inCar && pl.car && dPl < 8 && pl.car.speed < 2.5 && Math.abs(car.vf) < 2) near++;
       } else if (car.mode === 'ai') {
         // chase over: go back to patrolling
         CB.rejoinTraffic(car);
@@ -558,6 +807,7 @@
       if (t.t <= 0) { CB.Pools.gB.release(t.slot); this.tasers.splice(i, 1); }
     }
 
+    updateRoadblock(dt, pl, nowChasing);
     updateHeli(dt, pl, game);
 
     // ---- siren audio from the nearest active cruiser

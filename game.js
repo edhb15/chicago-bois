@@ -504,6 +504,7 @@
       CB.FX.shake(Math.min(0.8, imp / 25));
       CB.FX.burst('sparks', car.x + Math.sin(car.h) * car.L / 2, car.y + 0.6, car.z + Math.cos(car.h) * car.L / 2, 20);
       if (imp > 15) playerHit((imp - 15) * 1.1, 'crash');
+      if (imp > 12) CB.Police.hear(car.x, car.z, 45, game, 'crash');
       if (car.health <= 0 && !car.dead) wreckCar(car);
     };
   }
@@ -513,6 +514,7 @@
     CB.FX.burst('fire', car.x, car.y + 1, car.z, 90);
     CB.FX.burst('smoke', car.x, car.y + 1.5, car.z, 30);
     CB.Audio.play('explode', 1, car.x, car.z, 120);
+    CB.Police.hear(car.x, car.z, 110, game, 'boom');
     CB.FX.shake(0.9);
     for (const p of car.rig.parts) if (p.pool === CB.Pools.shiny) car.rig.color(p, [0.12, 0.11, 0.1]);
     if (pl.car === car) {
@@ -1205,6 +1207,7 @@
     const mx = pl.x + sy * 0.78 + cy * 0.22, my = pl.y + 1.42, mz = pl.z + cy * 0.78 - sy * 0.22;
     tracer(mx, my, mz, hit.x, hit.y, hit.z);
     CB.Audio.play('gun', 1);
+    CB.Police.hear(pl.x, pl.z, 85, game, 'shots');
     CB.FX.burst('sparks', mx, my, mz, 6);
     CB.FX.shake(0.06);
     applyHit(hit, d);
@@ -1649,6 +1652,7 @@
   // One simulation step (exposed for automated tests: CB.game.step(dt, render)).
   function step(dt, render) {
     if (game.state === 'loading') { if (render) scene.render(); return; }
+    if (camera) { CB.camX = camera.position.x; CB.camZ = camera.position.z; } // for level of detail
     const playing = game.state === 'playing';
     const live = playing || game.state === 'over' || game.state === 'won';
     const simDt = game.state === 'paused' ? 0 : dt;

@@ -30,13 +30,26 @@ A chaotic, slightly comedic 3D open-world crime sandbox set in a cartoon version
 - **Wanted meter:** every crime adds heat (minor +10%, medium +25%, major +40%, very major +60%). Repeating the same small crime within a minute gives less. Crimes done while cops are chasing you give ×1.25. 100% = one star; 500% = win.
 - **Police response** grows with each star: suspicious officers (1), chase on sight (2), more units (3), tasers and ramming cruisers (4), and a helicopter with a spotlight (5).
 - **Escaping:** break line of sight, duck into alleys, hide in dumpsters or bushes, or buy a disguise at a thrift store. When the search timer runs out you've escaped.
+- **Smarter police:**
+  - **Teamwork on foot:** officers split up. Two chase you, one runs to where you're heading to cut you off, and the rest fan out to the sides so you can't just run in a straight line.
+  - **Driving:** the two closest cruisers chase you while the others race to the intersection ahead. If you stop, they park in front of, behind and beside your car, and officers get out to pull you out.
+  - **Roadblocks:** from three stars, a fast car chase can end with two cruisers parked across the road ahead and armed officers behind them.
+  - **Hearing:** gunshots, explosions and crashes during a chase give away where you are, even when nobody can see you.
+  - **Searching:** when they lose you, they guess where you went from your speed and direction (the radio says "They think you went north"). Then they check every dumpster and bush nearby, one by one. A cop can open your dumpster and still miss you, but don't count on it at five stars.
+  - **Pistol:** if you have a pistol out, they zig-zag towards you and reach for the taser sooner. At low wanted levels they hold back while you aim at them.
 - **Busted:** officers next to you fill the arrest meter (shove them or run). If it fills, or your health hits zero, it's game over.
 
 ## Your character
 
 Choose **CHARACTER** in the main menu. Pick one of six ready-made characters (Dre, Rosa, Big Tony, Maya, Jimmy, Kenji) or build your own: male or female body, slim/regular/heavy build, height, skin tone, nine hair styles and colours, facial hair, eye colour, cap or beanie, shades, T-shirt/long sleeves/hoodie/open jacket/tank top, long pants or shorts, shoe colour and a gold chain. Drag to turn the character, scroll to zoom. Your choice is saved in the browser. A disguise from the thrift store changes your clothes but keeps your face.
 
-Everyone in the city is built the same way – proportioned bodies with knees and elbows, faces, hair styles and outfits – and walks, runs, sits and sunbathes with matching animations.
+Everyone in the city is built the same way – proportioned bodies with knees and elbows, faces, hair styles and outfits – and walks, runs, sits and sunbathes with matching animations. Up close there's more detail:
+- **Faces:** eyes that blink, eyebrows and lips that move, and teeth when they shout. Faces show fear when someone runs or is held up, and people look at you as you walk past.
+- **Hands:** fingers and thumbs that curl into a fist when holding a gun.
+- **Clothes:** shoe soles and laces, socks with shorts, collars, T-shirt prints, hoodie strings and zips, jacket lapels and belts with buckles.
+- **Extras:** some people carry a backpack, watch, earrings or headphones, and they hold a phone when they call the cops.
+- **Police:** a badge, name tag, shoulder mic and patches, a duty belt with holster, radio, cuffs and taser, and the checkered cap band.
+- **Performance:** small details are only shown for people near the camera, so crowds stay fast.
 
 ## Around the city
 
@@ -79,7 +92,7 @@ Plain HTML/CSS/JavaScript with [Babylon.js](https://www.babylonjs.com/) 8.20 (`l
 | `js/charscreen.js` | Character select / customisation screen with the 3D preview |
 | `js/ambient.js` | Tower crane, airliners, sailboats, beachgoers, volleyball and basketball games |
 | `js/vehicles.js` | Car models, arcade physics, traffic on the street grid |
-| `js/police.js` | Wanted level, police AI (officers, cruisers, chopper), arrests |
+| `js/police.js` | Wanted level, police AI (team roles, hearing, predicted search of hiding spots, roadblocks, box-ins, interception, chopper), arrests |
 | `js/activities.js` | Robberies, break-ins, vandalism, races, ramps, hiding… |
 | `js/landmarks.js` | L train, Ferris wheel, mirror sculpture, lake, river and tour boats |
 | `js/hud.js`, `js/effects.js`, `js/audio.js` | HUD + minimap, particles, synthesized sound and music |
