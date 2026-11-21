@@ -181,6 +181,12 @@
     go(t, v) { tone('square', 1320, t, 0.6, 0.14 * v, { lp: 4000 }); },
     alarmCar(t, v, p) { for (let i = 0; i < 12; i++) tone('square', i % 2 ? 1050 : 750, t + i * 0.22, 0.2, 0.08 * v, { lp: 2500, pan: p }); },
     pop(t, v, p) { burst(t, 0.2, 0.6 * v, 'lowpass', 2500, { pan: p }); tone('sine', 120, t, 0.3, 0.5 * v, { to: 35, pan: p }); },
+    // thunder: a sharp crack (close strikes) and a long low rumble
+    thunder(t, v, p) {
+      burst(t, 0.35, 0.35 * v, 'lowpass', 2600, { pan: p, to: 500 });
+      burst(t + 0.05, 3.6, 0.85 * v, 'lowpass', 520, { pan: p, to: 60, brown: true, a: 0.25 });
+      burst(t + 0.7, 2.4, 0.5 * v, 'lowpass', 300, { pan: -p, to: 50, brown: true, a: 0.4 });
+    },
     explode(t, v, p) {
       burst(t, 1.4, 0.9 * v, 'lowpass', 1200, { pan: p, to: 120, brown: false });
       tone('sine', 90, t, 1.0, 0.8 * v, { to: 25, pan: p });
@@ -260,6 +266,12 @@
       const am = ctx.createGain(); am.gain.value = 0.5; const lp = filtered(o, 'lowpass', 3000); lp.connect(am); am.connect(g);
       const lfo = ctx.createOscillator(); lfo.type = 'square'; lfo.frequency.value = 16; const lg = ctx.createGain(); lg.gain.value = 0.5;
       lfo.connect(lg); lg.connect(am.gain); lfo.start(); o.start();
+    });
+    // rain: a hiss of drops plus a softer patter on roofs and cars
+    L.rain = loopNode((g) => {
+      const s = noiseSrc(); const hp = filtered(s, 'highpass', 1500); const lp = filtered(hp, 'lowpass', 9000); lp.connect(g);
+      const s2 = noiseSrc(true); filtered(s2, 'bandpass', 700, 0.4).connect(g);
+      s.start(); s2.start();
     });
     L.skid = loopNode((g) => { const s = noiseSrc(); filtered(s, 'bandpass', 2400, 3).connect(g); s.start(); });
   };

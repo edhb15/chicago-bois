@@ -6,7 +6,7 @@ A chaotic, slightly comedic 3D open-world crime sandbox set in a cartoon version
 
 ![The Chicago Bois skyline at sunset](screenshot.jpg)
 
-**Endast för dator** – the game needs a keyboard and mouse.
+Play on a computer with keyboard and mouse, or on a **phone or tablet** with touch controls (turn it sideways).
 
 ## Controls
 
@@ -24,6 +24,23 @@ A chaotic, slightly comedic 3D open-world crime sandbox set in a cartoon version
 | M | City map |
 | H | Horn |
 | Esc | Pause menu |
+
+### Phone and tablet
+
+Touch controls turn on by themselves on touch screens (Settings → Touch controls can force them on or off).
+
+| Touch | Action |
+|---|---|
+| Left thumb | Joystick that appears where you touch: walk, push all the way to sprint · in a car: gas, reverse and steering |
+| Right thumb | Drag to look around |
+| 👊 🏏 🔧 🔫 | Use the weapon in your hand (with stronger aim assist for the pistol) |
+| ✋ | Interact – lights up when there's something to do; hold it to rob · 🚪 gets you out of a car or a dumpster |
+| ⤒ / 🅿 | Jump · handbrake in a car |
+| 🔄 · 🎯 · 🔃 | Switch weapon · aim the pistol (tap again to lower it) · reload |
+| 📢 · 📻 | Horn · car radio |
+| 🗺 · ⏸ | City map · pause |
+
+The HUD shrinks to fit around your thumbs. On phones the game asks you to turn the phone sideways, goes full screen where the browser allows it, and starts on Low graphics (tablets on Medium).
 
 ## How it works
 
@@ -69,9 +86,12 @@ Mugging people with a weapon (+10%; robbing a cop +25% and they come after you),
 
 ## Graphics settings
 
-- **High** (default): 4096 px sun shadows, glowing neon and lights, bloom, MSAA and sharpening, filmic (ACES) colour grading, and real-time reflections of the skyline in the lake and the river.
-- **Medium**: 2048 px shadows and glow; the water reflects the sky.
+- **Ultra** (for fast computers): everything on High plus ambient occlusion (soft shadows in corners, under cars and trees), film grain, full resolution on high-DPI screens, a longer view and more people and traffic.
+- **High** (default): 4096 px sun shadows, glowing neon and lights, bloom, MSAA and sharpening, filmic (ACES) colour grading, real-time reflections of the skyline in the lake and the river, and mirror-like wet streets in the rain.
+- **Medium**: 2048 px shadows and glow, FXAA edge smoothing; the water reflects the sky.
 - **Low**: no shadows or glow, lower resolution, shorter draw distance.
+
+**Weather** (Settings → Weather: changing, always clear, or rainstorm): every few minutes clouds roll in and the sky turns grey, then it rains. You get falling streaks, splashes, and the rain's sound. Streets get dark and glossy, and on High and Ultra they reflect the lights and neon in long blurred streaks. Heavy storms bring lightning that lights up the clouds, and thunder that comes sooner when the strike is close. The streets stay wet for a while after the rain stops, and the rain makes it a little harder for the police to see you.
 
 On every setting: animated water with sun and moon glints and foam along the lakeshore, a sky with drifting self-shadowed clouds that turn pink at sunset, lit apartment and office windows at night, pools of light under street lamps and neon signs, and haze that thins out when you look at the city from above.
 
@@ -96,6 +116,8 @@ Plain HTML/CSS/JavaScript with [Babylon.js](https://www.babylonjs.com/) 8.20 (`l
 | `js/activities.js` | Robberies, break-ins, vandalism, races, ramps, hiding… |
 | `js/landmarks.js` | L train, Ferris wheel, mirror sculpture, lake, river and tour boats |
 | `js/hud.js`, `js/effects.js`, `js/audio.js` | HUD + minimap, particles, synthesized sound and music |
+| `js/weather.js` | Clouds, rain, splashes, wet-street reflections, lightning and thunder |
+| `js/touch.js` | Touch controls for phones and tablets (joystick, look, buttons) |
 
 ## Run it locally
 

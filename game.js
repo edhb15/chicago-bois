@@ -60,7 +60,7 @@
 
   function counts() {
     const q = CB.settings.quality;
-    return q === 'low' ? { peds: 24, traffic: 16 } : q === 'high' ? { peds: 46, traffic: 30 } : { peds: 36, traffic: 24 };
+    return q === 'low' ? { peds: 24, traffic: 16 } : q === 'ultra' ? { peds: 56, traffic: 36 } : q === 'high' ? { peds: 46, traffic: 30 } : { peds: 36, traffic: 24 };
   }
 
   // =================================================================== world: sky, lights, camera
@@ -74,7 +74,7 @@
     precision highp float;
     varying vec3 vPos;
     uniform vec3 topColor, horizonColor, sunDir, sunColor;
-    uniform float night, time;
+    uniform float night, time, cover, flash;
     float hash(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
     float h2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
     float noise(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
@@ -88,9 +88,9 @@
       vec3 sd3 = normalize(sunDir);
       float sd = max(dot(d, sd3), 0.0);
       float day = 1.0 - night;
-      col += sunColor * (pow(sd, 900.0) * 6.0 + pow(sd, 10.0) * 0.28) * day;
+      col += sunColor * (pow(sd, 900.0) * 6.0 + pow(sd, 10.0) * 0.28) * day * (1.0 - 0.94 * cover);
       // stars and moon (behind the clouds)
-      if (night > 0.0 && h > 0.0) {
+      if (night > 0.0 && h > 0.0 && cover < 0.95) {
         vec3 p = floor(d * 280.0);
         float s = hash(p);
         if (s > 0.996) col += vec3(1.0) * night * (s - 0.996) * 220.0 * clamp(h * 4.0, 0.0, 1.0);
@@ -101,7 +101,8 @@
       if (h > 0.01) {
         vec2 uv = d.xz / (h + 0.12) * 1.25 + vec2(time * 0.006, time * 0.0025);
         float n = fbm(uv);
-        float c = smoothstep(0.5, 0.78, n) * smoothstep(0.01, 0.22, h);
+        // overcast: the cloud layer thickens until it covers the whole sky
+        float c = smoothstep(0.5 - cover * 0.46, 0.78 - cover * 0.4, n) * smoothstep(0.01, 0.22, h);
         if (c > 0.001) {
           float n2 = fbm(uv + sd3.xz * 0.22);
           float lit = clamp(0.62 + (n - n2) * 3.2, 0.18, 1.0);
@@ -110,9 +111,12 @@
           vec3 shadeCol = mix(horizonColor, topColor, 0.45) * mix(0.82, 0.6, dusk);
           vec3 cc = mix(shadeCol, litCol, lit) * day + vec3(0.07, 0.08, 0.11) * night * (0.6 + 0.4 * lit);
           cc += sunColor * pow(sd, 6.0) * (1.0 - smoothstep(0.55, 0.95, n)) * 0.55 * day; // silver lining
-          col = mix(col, cc, c * 0.9);
+          cc *= 1.0 - 0.38 * cover * (1.0 - n * 0.6);
+          col = mix(col, cc, c * mix(0.9, 0.98, cover));
         }
       }
+      // lightning lights up the clouds from inside
+      col += vec3(0.72, 0.76, 0.95) * flash * (0.35 + 0.65 * smoothstep(-0.05, 0.3, h));
       gl_FragColor = vec4(col, 1.0);
     }`;
 
@@ -120,13 +124,14 @@
     // sky dome
     skyMesh = B.MeshBuilder.CreateSphere('sky', { diameter: 3000, segments: 24, sideOrientation: B.Mesh.BACKSIDE }, scene);
     skyMat = new B.ShaderMaterial('skyMat', scene, 'cbSky', {
-      attributes: ['position'], uniforms: ['worldViewProjection', 'topColor', 'horizonColor', 'sunDir', 'sunColor', 'night', 'time'],
+      attributes: ['position'], uniforms: ['worldViewProjection', 'topColor', 'horizonColor', 'sunDir', 'sunColor', 'night', 'time', 'cover', 'flash'],
     });
     skyMat.backFaceCulling = false;
     skyMesh.material = skyMat;
     skyMesh.infiniteDistance = true;
     skyMesh.isPickable = false;
     skyMesh.applyFog = false;
+    CB.Weather.init(scene, skyMesh);
 
     hemi = new B.HemisphericLight('hemi', new B.Vector3(0.2, 1, 0.1), scene);
     sun = new B.DirectionalLight('sun', new B.Vector3(-0.5, -1, -0.3), scene);
@@ -160,16 +165,21 @@
     for (const c of CB.City.chunkMeshes) c.mesh.receiveShadows = true;
   }
 
-  let pipeline = null;
+  let pipeline = null, ssao = null, fxaa = null;
   function applyQuality() {
-    const q = CB.settings.quality;
-    engine.setHardwareScalingLevel(q === 'low' ? 1.5 : q === 'high' ? 1 / Math.min(window.devicePixelRatio || 1, 1.5) : 1);
+    const q = CB.settings.quality, hi = q === 'high' || q === 'ultra';
+    // render resolution: phones have small CSS sizes but sharp screens, so they go above 1x instead of below
+    const dpr = window.devicePixelRatio || 1, touch = CB.Touch.on;
+    const scale = q === 'low' ? (touch ? 1 / Math.min(dpr, 1.25) : 1.5)
+      : q === 'medium' ? (touch ? 1 / Math.min(dpr, 1.5) : 1)
+        : q === 'high' ? 1 / Math.min(dpr, 1.5) : 1 / Math.min(dpr, 2);
+    engine.setHardwareScalingLevel(scale);
     // shadows: one large map that follows the player (4096 px over 320 m on High, 2048 px over 210 m on Medium).
     // Poisson filtering is used because depth-compare (PCF) maps fail on some drivers.
     if (shadowGen) { shadowGen.dispose(); shadowGen = null; }
     if (q !== 'low') {
-      sun.shadowFrustumSize = q === 'high' ? 320 : 210;
-      shadowGen = new B.ShadowGenerator(q === 'high' ? 4096 : 2048, sun);
+      sun.shadowFrustumSize = hi ? 320 : 210;
+      shadowGen = new B.ShadowGenerator(hi ? 4096 : 2048, sun);
       shadowGen.usePoissonSampling = true;
       shadowGen.bias = 0.0007; shadowGen.normalBias = 0.02;
       shadowGen.setDarkness(0.12);
@@ -178,7 +188,7 @@
     // glow
     if (glow) { glow.dispose(); glow = null; }
     if (q !== 'low') {
-      glow = new B.GlowLayer('glow', scene, { mainTextureRatio: q === 'high' ? 0.5 : 0.35, blurKernelSize: 28 });
+      glow = new B.GlowLayer('glow', scene, { mainTextureRatio: q === 'ultra' ? 0.65 : hi ? 0.5 : 0.35, blurKernelSize: 28 });
       // Everything is drawn into the glow pass so buildings hide lights behind them,
       // but only the light meshes actually glow (the rest is drawn black).
       const inc = new Set(CB.Pools.glowMeshes.concat([CB.City.signMesh, CB.Landmarks.bulbs], CB.Activities.glowMeshes).filter(Boolean));
@@ -195,9 +205,23 @@
       for (const p of [CB.Pools.box, CB.Pools.cyl, CB.Pools.sph]) glow.addExcludedMesh(p.mesh);
       for (const p of [CB.Pools.sCyl, CB.Pools.sSph, CB.Pools.sCone]) for (const m of p.meshes) glow.addExcludedMesh(m);
     }
-    // post-processing on High: MSAA, bloom on bright sky / neon, gentle sharpening
+    // Ultra: ambient occlusion (soft contact shadows in corners, under cars and trees) – it runs
+    // first so the other effects work on the shaded image
+    if (ssao) { ssao.dispose(); ssao = null; }
+    if (fxaa) { fxaa.dispose(camera); fxaa = null; }
+    // Medium: cheap edge smoothing (High and Ultra use MSAA instead)
+    if (q === 'medium') { try { fxaa = new B.FxaaPostProcess('fxaa', 1.0, camera); } catch (e) { fxaa = null; } }
     if (pipeline) { pipeline.dispose(); pipeline = null; }
-    if (q === 'high') {
+    if (q === 'ultra') {
+      try {
+        if (B.SSAO2RenderingPipeline.IsSupported) {
+          ssao = new B.SSAO2RenderingPipeline('ssao', scene, { ssaoRatio: 0.5, blurRatio: 0.5 }, [camera], true);
+          ssao.radius = 1.4; ssao.totalStrength = 1.15; ssao.base = 0.15; ssao.samples = 16; ssao.maxZ = 180; ssao.expensiveBlur = true;
+        }
+      } catch (e) { ssao = null; }
+    }
+    // post-processing on High: MSAA, bloom on bright sky / neon, gentle sharpening
+    if (hi) {
       try {
         pipeline = new B.DefaultRenderingPipeline('pipe', true, scene, [camera]);
         pipeline.samples = 4;
@@ -206,10 +230,16 @@
         pipeline.bloomThreshold = 0.78; pipeline.bloomWeight = 0.32; pipeline.bloomKernel = 64; pipeline.bloomScale = 0.5;
         pipeline.sharpenEnabled = true; pipeline.sharpen.edgeAmount = 0.2;
         pipeline.imageProcessingEnabled = true;
+        if (q === 'ultra') {
+          // fine film grain
+          pipeline.grainEnabled = true; pipeline.grain.intensity = 4; pipeline.grain.animated = true;
+        }
       } catch (e) { pipeline = null; }
     }
-    CB.Landmarks.setMirror(q === 'high');
-    const far = q === 'low' ? 420 : q === 'high' ? 820 : 600;
+
+    CB.Landmarks.setMirror(q === 'high' || q === 'ultra');
+    CB.Weather.setQuality(q);
+    const far = q === 'low' ? 420 : q === 'ultra' ? 960 : q === 'high' ? 820 : 600;
     game.fogBase = { start: far * 0.3, end: far * 1.08, view: far + 150 };
     scene.fogEnd = far * 1.08; scene.fogStart = far * 0.3;
     // filmic (ACES) tone mapping on High, where image processing runs as a post-process for everything
@@ -237,8 +267,9 @@
     const rl = shadowGen.getShadowMap().renderList;
     rl.length = 0;
     for (const m of CB.Pools.casters) rl.push(m);
-    for (const m of CB.Pools.staticCasters) if (M.dist(m.cellX, m.cellZ, fx, fz) < (CB.settings.quality === 'high' ? 360 : 300)) rl.push(m);
-    const reach = CB.settings.quality === 'high' ? 330 : 240;
+    const hiQ = CB.settings.quality === 'high' || CB.settings.quality === 'ultra';
+    for (const m of CB.Pools.staticCasters) if (M.dist(m.cellX, m.cellZ, fx, fz) < (hiQ ? 360 : 300)) rl.push(m);
+    const reach = hiQ ? 330 : 240;
     for (const c of CB.City.chunkMeshes) if (M.dist(c.x, c.z, fx, fz) < (c.kind === 'interior' ? 140 : reach)) rl.push(c.mesh);
     rl.push(CB.Landmarks.bean, CB.Landmarks.wheel);
   }
@@ -254,7 +285,7 @@
     const avg = game.fpsSum / game.fpsN;
     game.fpsT = 0; game.fpsN = 0; game.fpsSum = 0;
     if (avg >= 32) return;
-    S.quality = S.quality === 'high' ? 'medium' : 'low';
+    S.quality = S.quality === 'ultra' ? 'high' : S.quality === 'high' ? 'medium' : 'low';
     CB.saveSettings();
     applyQuality();
     CB.HUD.notify('⚙ Graphics set to ' + S.quality.toUpperCase(), 'For a smoother frame rate – change it in Settings.', 'yellow');
@@ -281,6 +312,14 @@
     game.night = night;
     let top = mix3(COL.nightTop, COL.dayTop, day), hor = mix3(COL.nightHor, COL.dayHor, day);
     top = mix3(top, COL.duskTop, dusk * 0.5); hor = mix3(hor, COL.duskHor, dusk * 0.7);
+    // weather: an overcast sky turns grey, rain thickens the haze, lightning flashes
+    const Wx = CB.Weather, cov = Wx.cover, rn = Wx.rain, wet = Wx.wet, fl = Wx.flash;
+    if (cov > 0) {
+      top = mix3(top, mix3([0.04, 0.05, 0.07], [0.4, 0.44, 0.5], day), cov * 0.85);
+      hor = mix3(hor, mix3([0.07, 0.08, 0.1], [0.58, 0.61, 0.65], day), cov * 0.85);
+    }
+    skyMat.setFloat('cover', cov);
+    skyMat.setFloat('flash', fl);
     skyMat.setColor3('topColor', new B.Color3(top[0], top[1], top[2]));
     skyMat.setColor3('horizonColor', new B.Color3(hor[0], hor[1], hor[2]));
     skyMat.setVector3('sunDir', new B.Vector3(sun3[0], sun3[1], sun3[2]));
@@ -293,7 +332,7 @@
     // atmosphere, the menu fly-over and aerial views see across the city
     if (game.fogBase && camera) {
       const k = 1 + M.clamp((camera.position.y - 14) / 90, 0, 1.6);
-      scene.fogStart = game.fogBase.start * k; scene.fogEnd = game.fogBase.end * k;
+      scene.fogStart = game.fogBase.start * k * (1 - 0.6 * rn); scene.fogEnd = game.fogBase.end * k * (1 - 0.45 * rn);
       game.viewDist = game.fogBase.view * k;
     }
     scene.fogColor = new B.Color3(hor[0], hor[1], hor[2]);
@@ -308,14 +347,17 @@
       sun.intensity = 0.32 * M.smoothstep(-0.06, -0.3, sy);
       sun.diffuse.set(0.55, 0.65, 1);
     }
+    sun.intensity *= 1 - 0.72 * cov;
     sun.specular.copyFrom(sun.diffuse);
     // sky light: blue-grey moonlit city at night (with warm street-light bounce from below), warm at dusk
     hemi.intensity = 0.34 + 0.42 * day;
     hemi.diffuse.set(M.lerp(0.42, 1, day) + dusk * 0.12, M.lerp(0.48, 0.98, day) - dusk * 0.04, M.lerp(0.78, 0.95, day) - dusk * 0.14);
     hemi.groundColor.set(M.lerp(0.26, 0.38, day), M.lerp(0.19, 0.36, day), M.lerp(0.16, 0.34, day));
+    if (cov > 0) { const hd = hemi.diffuse, a = (hd.r + hd.g + hd.b) / 3; hd.set(M.lerp(hd.r, a, cov * 0.6), M.lerp(hd.g, a, cov * 0.6), M.lerp(hd.b, a * 1.06, cov * 0.6)); }
+    hemi.intensity = hemi.intensity * (1 - 0.08 * cov) + fl * 1.5;
     // shadow follows the focus point
     sun.position.set(fx - sun.direction.x * 220, -sun.direction.y * 220, fz - sun.direction.z * 220);
-    if (shadowGen) shadowGen.setDarkness(M.lerp(0.12, 0.6, night));
+    if (shadowGen) shadowGen.setDarkness(M.lerp(M.lerp(0.12, 0.6, night), 0.84, cov * 0.85)); // soft, faint shadows under cloud
     // emissive stuff
     const City = CB.City, P = CB.Pools;
     const wn = night * 0.95;
@@ -328,10 +370,13 @@
     const cn = 0.25 + 0.4 * night;
     P.matCrown.emissiveColor.set(0.55 * cn, 0.8 * cn, 1 * cn);
     P.matCrown2.emissiveColor.set(1 * cn, 0.72 * cn, 0.35 * cn);
-    P.matLampPool.emissiveColor.set(0.95 * night * 0.6, 0.75 * night * 0.6, 0.45 * night * 0.6);
-    const nk = 0.08 + night * 0.42;
+    // light pools on wet streets: brighter, like reflections in puddles
+    const lw = night * 0.6 * (1 + 0.9 * wet);
+    P.matLampPool.emissiveColor.set(0.95 * lw, 0.75 * lw, 0.45 * lw);
+    const nk = (0.08 + night * 0.42) * (1 + 1.1 * wet);
     P.matNeonPool.emissiveColor.set(nk, nk, nk);
-    P.matHeadPool.emissiveColor.set(0.9 * night * 0.5, 0.85 * night * 0.5, 0.7 * night * 0.5);
+    const hw = night * 0.5 * (1 + 0.6 * wet);
+    P.matHeadPool.emissiveColor.set(0.9 * hw, 0.85 * hw, 0.7 * hw);
     P.matSirenPool.alpha = 0.99;
     if (glow) glow.intensity = 0.55 + night * 0.55;
     // colour grade: warm highlights at golden hour, cool shadows at night
@@ -340,7 +385,7 @@
     if (cc) {
       cc.highlightsHue = 38; cc.highlightsDensity = Math.round(dusk * 45 + day * 6);
       cc.shadowsHue = 225; cc.shadowsDensity = Math.round(night * 40 + 8);
-      cc.globalSaturation = Math.round(26 + dusk * 14 - night * 8);
+      cc.globalSaturation = Math.round(26 + dusk * 14 - night * 8 - cov * 16);
     }
   }
 
@@ -382,17 +427,22 @@
       if (k.KeyA || k.ArrowLeft) ix -= 1;
       if (k.KeyD || k.ArrowRight) ix += 1;
     }
+    // touch joystick (analog: a gentle push walks slowly, all the way out sprints)
+    const ts = CB.Touch.on ? CB.Touch.stick : null;
+    let analog = 1;
+    if (ts && ts.mag > 0.12 && !busy && pl.downT <= 0) { ix += ts.x; iz += ts.y; analog = M.clamp((ts.mag - 0.12) / 0.6, 0.3, 1); }
     if (CB.Activities.pick && (ix || iz)) CB.Activities.cancelPick();
     const il = Math.hypot(ix, iz);
     const cy = Math.cos(game.camYaw), sy = Math.sin(game.camYaw);
     let wx = 0, wz = 0;
     if (il > 0) { ix /= il; iz /= il; wx = sy * iz + cy * ix; wz = cy * iz - sy * ix; }
-    pl.sprinting = !!(k.ShiftLeft || k.ShiftRight) && il > 0;
+    pl.sprinting = (!!(k.ShiftLeft || k.ShiftRight) || (ts && ts.mag > 0.93)) && il > 0;
     pl.aiming = !!game.aimHeld && pl.weapon === 'pistol' && !busy && pl.downT <= 0;
     if (pl.aiming) pl.sprinting = false;
     let speed = pl.aiming ? 2.6 : pl.sprinting ? 7.3 : 3.4;
     if (pl.stunT > 0) speed = 1.3;
     if (pl.downT > 0) { pl.downT -= dt; speed = 0; }
+    if (!pl.sprinting) speed *= analog;
     const tvx = wx * speed, tvz = wz * speed;
     const acc = pl.grounded ? 16 : 3;
     pl.vx = M.damp(pl.vx, tvx, acc, dt); pl.vz = M.damp(pl.vz, tvz, acc, dt);
@@ -480,6 +530,8 @@
       if (k.KeyS || k.ArrowDown) thr -= 1;
       if (k.KeyA || k.ArrowLeft) steer -= 1;
       if (k.KeyD || k.ArrowRight) steer += 1;
+      const ts = CB.Touch.on ? CB.Touch.stick : null;
+      if (ts && ts.mag > 0.12) { thr = M.clamp(thr + ts.y * 1.5, -1, 1); steer = M.clamp(steer + ts.x * 1.35, -1, 1); }
     }
     const hand = !!k.Space;
     car.drive(dt, car.dead ? 0 : thr, steer, hand);
@@ -861,9 +913,21 @@
     game.state = 'playing';
     showScreen(null);
     CB.HUD.show(true);
-    CB.HUD.notify('🌆 Welcome to Chicago', 'Rob, race and wreck your way to five stars. Press M for the map.', 'green');
+    CB.HUD.notify('🌆 Welcome to Chicago', CB.Touch.on ? 'Rob, race and wreck your way to five stars. Left thumb moves, right thumb looks.' : 'Rob, race and wreck your way to five stars. Press M for the map.', 'green');
+    if (CB.Touch.on) goFullscreen();
     CB.HUD.banner('CHICAGO BOIS', 'FIVE STARS OR BUST', 2.6);
     lockPointer();
+  }
+
+  // Phones: use the whole screen in landscape where the browser allows it.
+  function goFullscreen() {
+    const d = document.documentElement;
+    try {
+      if (!document.fullscreenElement && d.requestFullscreen) {
+        const p = d.requestFullscreen({ navigationUI: 'hide' });
+        if (p && p.then) p.then(() => { try { const o = screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape'); if (o && o.catch) o.catch(() => {}); } catch (e) { /* ignore */ } }).catch(() => {});
+      }
+    } catch (e) { /* not supported (iPhone) */ }
   }
 
   function busted(reason) {
@@ -913,6 +977,7 @@
     CB.Audio.music(false);
     CB.Activities.cancelHold();
     game.keys = {}; game.aimHeld = false;
+    CB.Touch.release();
     showScreen('pause');
   }
   function resume() {
@@ -942,6 +1007,7 @@
     for (const s of SCREENS) $(s).classList.toggle('hidden', s !== id);
   }
   function lockPointer() {
+    if (CB.Touch.on) return; // phones and tablets: no mouse to capture
     try {
       const p = canvas.requestPointerLock && canvas.requestPointerLock();
       if (p && p.catch) p.catch(() => { if (game.state === 'playing') showScreen('clickResume'); });
@@ -1006,7 +1072,7 @@
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
     document.addEventListener('pointerlockchange', () => {
       const locked = document.pointerLockElement === canvas;
-      if (!locked && game.wasLocked && game.state === 'playing') pause();
+      if (!locked && game.wasLocked && game.state === 'playing' && !CB.Touch.on) pause();
       game.wasLocked = locked;
     });
     canvas.addEventListener('wheel', (e) => {
@@ -1018,9 +1084,12 @@
       cycleWeapon(e.deltaY > 0 ? 1 : -1);
     }, { passive: false });
     window.addEventListener('resize', () => { engine.resize(); if (CB.HUD.bigOpen) CB.HUD.toggleBigMap(true); });
-    if (window.matchMedia && window.matchMedia('(hover: none)').matches) {
-      $('menu').querySelector('.menu-foot').insertAdjacentHTML('afterbegin', '<b style="color:#ffd32a">⚠ This game needs a keyboard and mouse – play it on a computer.</b><br>');
-    }
+    // touch controls (phones and tablets); buttons press the same keys as the keyboard
+    game.vkey = (code, down) => { if (down) onKey({ code, preventDefault() {} }); else game.keys[code] = false; };
+    game.pause = pause;
+    CB.Touch.init(game);
+    onSet('setTouch', 'touch', String, () => CB.Touch.apply());
+    onSet('setWeather', 'weather', String, () => { const W = CB.Weather; W.phaseT = 0; W.phase = CB.settings.weather === 'auto' ? 'rain' : W.phase; });
     // start menu music on the first gesture
     const first = () => { CB.Audio.init(); if (game.state === 'menu') CB.Audio.music(true); window.removeEventListener('pointerdown', first); window.removeEventListener('keydown', first); };
     window.addEventListener('pointerdown', first);
@@ -1044,7 +1113,7 @@
   function openSettings() {
     const S = CB.settings;
     $('setQuality').value = S.quality; $('setMaster').value = S.master; $('setMusic').value = S.music;
-    $('setSens').value = S.sens; $('setInvert').checked = S.invertY; $('setDay').value = String(S.dayLength); $('setFps').checked = S.showFps;
+    $('setSens').value = S.sens; $('setInvert').checked = S.invertY; $('setDay').value = String(S.dayLength); $('setFps').checked = S.showFps; $('setTouch').value = S.touch || 'auto'; $('setWeather').value = S.weather || 'auto';
     showScreen('settings');
   }
   function applySettings() { applyQuality(); CB.Audio.applyVolumes(); }
@@ -1244,7 +1313,7 @@
         if (t < minT || t > best.t) continue;
         const px = vx - d.x * t, py = vy - d.y * t, pz = vz - d.z * t;
         const lateral = Math.hypot(px, pz), vert = Math.abs(py);
-        const assist = 0.45 + t * 0.022;
+        const assist = (0.45 + t * 0.022) * (CB.Touch.on ? 2.2 : 1); // thumbs aren't as precise as a mouse
         if (lateral > assist || vert > 1.0 + t * 0.015) continue;
         if (!CB.City.los(pl.x, pl.z, p.x, p.z)) continue;
         best = { t, kind, obj: p, x: p.x, y: p.y + 1.1 + (o.y + d.y * t - (p.y + 1.1)) * 0.5, z: p.z };
@@ -1637,12 +1706,12 @@
         const d = M.dist(best.x, best.z, pl.x, pl.z);
         const ang = Math.atan2(best.x - pl.x, best.z - pl.z);
         const dir = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(((ang + Math.PI * 2) % (Math.PI * 2)) / (Math.PI / 4)) % 8];
-        const verb = best.kind === 'race' ? 'Win the street race' : best.kind === 'breakin' ? 'Break into a ' + best.name : best.kind === 'atm' ? 'Hack an ATM' : 'Rob ' + best.name;
+        const verb = best.kind === 'race' ? 'Win the street race' : best.kind === 'breakin' ? 'Break into ' + (/^[aeiou]/i.test(best.name) ? 'an ' : 'a ') + best.name : best.kind === 'atm' ? 'Hack an ATM' : 'Rob ' + best.name;
         h = `${verb} – <b>${Math.round(d)} m ${dir}</b>${pl.inCar ? '' : ' · grab a car with <b>E</b>'}`;
       } else h = 'Cause some chaos – smash hydrants, tag walls, steal cars!';
       if (P.level >= 5) h = '<b>Final star!</b> ' + h;
     }
-    $('hint').innerHTML = h;
+    $('hint').innerHTML = CB.Touch.text(h);
     $('objective').innerHTML = `Reach ✶✶✶✶✶ without getting busted <b style="color:#ffd32a">(${Math.floor(P.wanted / 100)}/5)</b>`;
   }
 
@@ -1663,6 +1732,7 @@
       if (live) { fx = pl.x; fz = pl.z; view = game.camYaw; }
       else { fx = 150; fz = 0; view = Math.atan2(camera.getTarget().x - camera.position.x, camera.getTarget().z - camera.position.z); }
       lastFocus = { x: fx, z: fz };
+      CB.Weather.update(simDt, game, camera);
       updateSky(simDt, fx, fz);
       if (live) {
         if (pl.inCar) updatePlayerCar(simDt); else updatePlayerFoot(simDt);
@@ -1703,6 +1773,7 @@
       if (live) updateCamera(simDt); else if (game.state === 'character') CB.CharScreen.update(simDt); else menuCamera(simDt);
       if (playing || live) CB.HUD.update(game, simDt);
     }
+    CB.Touch.update(game);
     CB.Pools.flush();
     if (render) scene.render();
   }

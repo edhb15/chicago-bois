@@ -2,7 +2,10 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+    <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="robots" content="noindex">
     <title>Chicago Bois</title>
     <meta name="description" content="A chaotic 3D open-world crime sandbox in a cartoon Chicago. Rack up five wanted stars without getting busted.">
@@ -16,7 +19,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Anton&family=Barlow+Condensed:wght@500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=8">
+    <link rel="stylesheet" href="style.css?v=9">
 </head>
 <body>
     <canvas id="renderCanvas" tabindex="0"></canvas>
@@ -57,13 +60,13 @@
         <div id="raceHud" class="hidden"><div id="raceTime">0.0</div><div id="raceCp">Checkpoint 1/8</div></div>
 
         <div id="eye" class="meter hidden"><span>👁 SUSPICIOUS</span><div class="bar"><div id="eyeFill"></div></div></div>
-        <div id="bust" class="meter red hidden"><span>🚔 GETTING ARRESTED – shove (F / click) or run!</span><div class="bar"><div id="bustFill"></div></div></div>
+        <div id="bust" class="meter red hidden"><span data-touch-text="🚔 GETTING ARRESTED – shove (👊) or run!">🚔 GETTING ARRESTED – shove (F / click) or run!</span><div class="bar"><div id="bustFill"></div></div></div>
         <div id="hideTag" class="hidden">🙈 HIDING</div>
 
         <div id="prompt" class="hidden"></div>
-        <div id="progress" class="hidden"><div id="progressLabel"></div><div class="bar"><div id="progressFill"></div></div><small>Hold E</small></div>
+        <div id="progress" class="hidden"><div id="progressLabel"></div><div class="bar"><div id="progressFill"></div></div><small data-touch-text="Hold ✋">Hold E</small></div>
         <div id="lockpick" class="hidden">
-            <div class="lp-title">PICK THE LOCK – press <kbd>E</kbd> in the green zone</div>
+            <div class="lp-title" data-touch-text="PICK THE LOCK – tap ✋ in the green zone">PICK THE LOCK – press <kbd>E</kbd> in the green zone</div>
             <div class="lp-track"><div id="lockZone"></div><div id="lockNeedle"></div></div>
             <div id="lockPips"></div>
             <small>Move to give up · two misses trip the alarm</small>
@@ -75,7 +78,7 @@
     </div>
 
     <div id="bigmapWrap" class="hidden">
-        <div class="bm-head">CHICAGO BOIS – CITY MAP <small>press M to close</small></div>
+        <div class="bm-head">CHICAGO BOIS – CITY MAP <small data-touch-text="tap 🗺 to close">press M to close</small></div>
         <canvas id="bigmap"></canvas>
         <div class="bm-legend">
             <span>🏦 Bank</span><span>💎 Jewelry</span><span>📺 Electronics</span><span>$ Stores &amp; ATMs</span><span>🔓 Break-ins</span>
@@ -116,7 +119,7 @@
                 <button id="btnCharDone" class="big">✔ DONE</button>
             </div>
         </div>
-        <div class="char-hint">Drag to turn · Scroll to zoom</div>
+        <div class="char-hint" data-touch-text="Drag to turn">Drag to turn · Scroll to zoom</div>
     </div>
 
     <div id="controls" class="screen hidden panel-screen">
@@ -135,6 +138,17 @@
                 <div><kbd>M</kbd></div><div>City map</div>
                 <div><kbd>H</kbd></div><div>Horn</div>
                 <div><kbd>Esc</kbd></div><div>Pause menu</div>
+            </div>
+            <h3>PHONE &amp; TABLET</h3>
+            <div class="ctl-grid">
+                <div><kbd>Left thumb</kbd></div><div>Joystick – walk, push all the way to sprint · steer, gas and reverse in a car</div>
+                <div><kbd>Right thumb</kbd></div><div>Drag to look around</div>
+                <div><kbd>👊</kbd> <kbd>🏏</kbd> <kbd>🔫</kbd></div><div>Use your weapon (shows the one in your hand)</div>
+                <div><kbd>✋</kbd></div><div>Interact – lights up when there's something to do · hold to rob · 🚪 gets out of a car</div>
+                <div><kbd>⤒</kbd> / <kbd>🅿</kbd></div><div>Jump · handbrake in a car</div>
+                <div><kbd>🔄</kbd> <kbd>🎯</kbd> <kbd>🔃</kbd></div><div>Switch weapon · aim the pistol (tap again to lower it) · reload</div>
+                <div><kbd>📢</kbd> <kbd>📻</kbd></div><div>Horn · car radio</div>
+                <div><kbd>🗺</kbd> <kbd>⏸</kbd></div><div>City map · pause</div>
             </div>
             <h3>HOW TO PLAY</h3>
             <ul class="howto">
@@ -156,14 +170,18 @@
             <h2>SETTINGS</h2>
             <div class="set-grid">
                 <label for="setQuality">Graphics quality</label>
-                <select id="setQuality"><option value="low">Low (fast)</option><option value="medium">Medium</option><option value="high">High (shadows + effects)</option></select>
+                <select id="setQuality"><option value="low">Low (fast)</option><option value="medium">Medium</option><option value="high">High (shadows + effects)</option><option value="ultra">Ultra (fast PC: ambient occlusion, sharper, busier)</option></select>
                 <label for="setMaster">Master volume</label><input id="setMaster" type="range" min="0" max="1" step="0.05">
                 <label for="setMusic">Music &amp; radio</label><input id="setMusic" type="range" min="0" max="1" step="0.05">
                 <label for="setSens">Mouse sensitivity</label><input id="setSens" type="range" min="0.3" max="2.5" step="0.1">
                 <label for="setInvert">Invert mouse Y</label><input id="setInvert" type="checkbox">
                 <label for="setDay">Day length</label>
                 <select id="setDay"><option value="5">5 minutes</option><option value="10">10 minutes</option><option value="20">20 minutes</option><option value="0">Always night</option></select>
+                <label for="setWeather">Weather</label>
+                <select id="setWeather"><option value="auto">Changing (rain now and then)</option><option value="clear">Always clear</option><option value="rain">Rainstorm</option></select>
                 <label for="setFps">Show FPS</label><input id="setFps" type="checkbox">
+                <label for="setTouch">Touch controls</label>
+                <select id="setTouch"><option value="auto">Automatic</option><option value="on">Always on</option><option value="off">Off</option></select>
             </div>
             <button class="close">BACK</button>
         </div>
@@ -209,20 +227,22 @@
     <div id="noWebgl" class="screen hidden"><div class="panel narrow"><h2>NO 3D SUPPORT</h2><p>Your browser could not start WebGL. Try a recent Chrome, Edge, Firefox or Safari on a computer.</p></div></div>
 
     <script src="lib/babylon.js"></script>
-    <script src="js/util.js?v=8"></script>
-    <script src="js/pools.js?v=8"></script>
-    <script src="js/audio.js?v=8"></script>
-    <script src="js/citytex.js?v=8"></script>
-    <script src="js/city.js?v=8"></script>
-    <script src="js/characters.js?v=8"></script>
-    <script src="js/vehicles.js?v=8"></script>
-    <script src="js/police.js?v=8"></script>
-    <script src="js/effects.js?v=8"></script>
-    <script src="js/activities.js?v=8"></script>
-    <script src="js/landmarks.js?v=8"></script>
-    <script src="js/ambient.js?v=8"></script>
-    <script src="js/hud.js?v=8"></script>
-    <script src="js/charscreen.js?v=8"></script>
-    <script src="game.js?v=8"></script>
+    <script src="js/util.js?v=9"></script>
+    <script src="js/pools.js?v=9"></script>
+    <script src="js/audio.js?v=9"></script>
+    <script src="js/citytex.js?v=9"></script>
+    <script src="js/city.js?v=9"></script>
+    <script src="js/characters.js?v=9"></script>
+    <script src="js/vehicles.js?v=9"></script>
+    <script src="js/police.js?v=9"></script>
+    <script src="js/effects.js?v=9"></script>
+    <script src="js/activities.js?v=9"></script>
+    <script src="js/landmarks.js?v=9"></script>
+    <script src="js/ambient.js?v=9"></script>
+    <script src="js/hud.js?v=9"></script>
+    <script src="js/charscreen.js?v=9"></script>
+    <script src="js/touch.js?v=9"></script>
+    <script src="js/weather.js?v=9"></script>
+    <script src="game.js?v=9"></script>
 </body>
 </html>

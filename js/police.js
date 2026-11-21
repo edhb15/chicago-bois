@@ -104,7 +104,7 @@
     if (pl.hidden || pl.dead) return false;
     const dx = pl.x - ux, dz = pl.z - uz;
     const d = Math.hypot(dx, dz);
-    let r = range * (1 - 0.3 * night);
+    let r = range * (1 - 0.3 * night) * (1 - 0.25 * (CB.Weather ? CB.Weather.rain : 0)); // rain hides you a little
     if (pl.inCover) r *= 0.45;
     if (pl.disguiseT > 0 && Police.mode !== 'chase') r *= 0.6;
     if (pl.inCar) r *= 1.15;

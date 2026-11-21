@@ -79,13 +79,18 @@ window.CB = window.CB || {};
   // Settings (persisted per browser; works without storage too).
   const DEFAULTS = {
     quality: 'high', autoQuality: true, master: 0.8, music: 0.6, sens: 1, invertY: false,
-    dayLength: 10, showFps: false,
+    dayLength: 10, showFps: false, touch: 'auto', weather: 'auto',
   };
   CB.settings = Object.assign({}, DEFAULTS);
+  let saved = {};
   try {
-    const saved = JSON.parse(localStorage.getItem('chicago-bois-settings') || '{}');
+    saved = JSON.parse(localStorage.getItem('chicago-bois-settings') || '{}') || {};
     Object.assign(CB.settings, saved);
   } catch (e) { /* storage blocked */ }
+  // phones and tablets start on a lighter setting (auto quality can still step down)
+  if (!saved.quality && window.matchMedia && window.matchMedia('(pointer: coarse)').matches) {
+    CB.settings.quality = Math.min(screen.width, screen.height) >= 700 ? 'medium' : 'low';
+  }
   CB.saveSettings = () => {
     try { localStorage.setItem('chicago-bois-settings', JSON.stringify(CB.settings)); } catch (e) { /* ignore */ }
   };
